@@ -58,8 +58,9 @@ supplied PMPS N16 model:
 | Dihedrals | 35,000 |
 
 Unlike the old PMPS generator, the initial chains are non-collinear, molecules
-are randomly rotated, all coordinates are wrapped into the periodic box with
-consistent image flags, and intermolecular placements below 4.5 Å are rejected.
+are randomly rotated, every complete chain is placed wholly inside the primary
+box with zero image flags, and intermolecular placements below 4.5 Å are
+rejected. The default initial density is deliberately low at 0.1 g/cm³.
 
 ## Atom types
 
