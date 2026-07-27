@@ -90,15 +90,15 @@ data-file header and pair matrix for compatibility with the formulation models.
 All pair coefficients are calculated by the generator and written explicitly.
 LAMMPS does not apply an automatic mixing rule.
 
-The current interpretation of the requested arithmetic rule is:
+The DMS-MPS combining rule is:
 
 ```text
-epsilon(DMS,MPS) = [epsilon(DMS,DMS) + epsilon(MPS,MPS)] / 2
+epsilon(DMS,MPS) = sqrt[epsilon(DMS,DMS) * epsilon(MPS,MPS)]
 sigma(DMS,MPS)   = [sigma(DMS,DMS)   + sigma(MPS,MPS)]   / 2
 ```
 
 The pure PMPS backbone-pendant term remains the supplied PMPS cross
-interaction; it is not recalculated by arithmetic mixing.
+interaction; it is not recalculated by the DMS-MPS combining rule.
 
 ### 300 K attractive matrix
 
@@ -112,14 +112,14 @@ special_bonds lj 0 0 0.5
 | Pair | Epsilon (kcal/mol) | Sigma (Å) | Source |
 |---|---:|---:|---|
 | DMS-DMS | 1.012878450 | 6.445843660 | V22/V35 DMS model |
-| DMS-MPS backbone | 1.396371288 | 5.960508330 | Arithmetic mean |
-| DMS-MPS pendant | 0.930868363 | 6.206674705 | Arithmetic mean |
+| DMS-MPS backbone | 1.342678672 | 5.960508330 | Geometric ε; arithmetic σ |
+| DMS-MPS pendant | 0.927248755 | 6.206674705 | Geometric ε; arithmetic σ |
 | MPS backbone-backbone | 1.779864125 | 5.475173000 | PMPS model |
 | MPS backbone-pendant | 1.331357250 | 5.727290650 | Supplied PMPS cross term |
 | MPS pendant-pendant | 0.848858275 | 5.967505750 | PMPS model |
 
 Types 1, 2, and 3 receive the same DMS nonbonded parameters. Therefore all
-three types have the same arithmetic interactions with types 4 and 5.
+three types have the same combined interactions with types 4 and 5.
 
 ### 800 K repulsive matrix
 
@@ -137,13 +137,13 @@ sigma_PMPS(800)   = sigma_PMPS(300)
 ```
 
 After scaling the pure PMPS terms, the mixed DMS-MPS values are recalculated
-using the arithmetic rule.
+using geometric epsilon and arithmetic sigma.
 
 | Pair | Epsilon at 800 K | Sigma at 800 K (Å) | Repulsive cutoff (Å) |
 |---|---:|---:|---:|
 | DMS-DMS | 0.531850637 | 6.640519401 | 7.453731009 |
-| DMS-MPS backbone | 0.733218245 | 6.140526096 | 6.892507499 |
-| DMS-MPS pendant | 0.488788099 | 6.394127126 | 7.177165031 |
+| DMS-MPS backbone | 0.705024880 | 6.140526096 | 6.892507499 |
+| DMS-MPS pendant | 0.486887485 | 6.394127126 | 7.177165031 |
 | MPS backbone-backbone | 0.934585852 | 5.640532791 | 6.331283990 |
 | MPS backbone-pendant | 0.699080133 | 5.900264835 | 6.622823352 |
 | MPS pendant-pendant | 0.445725560 | 6.147734850 | 6.900599052 |
@@ -334,8 +334,8 @@ This version generates periodic bulk oil only. It does not yet:
 - insert the oil into V22 or V35;
 - generate film geometry or walls;
 - create reactive oil end groups;
-- infer any mixing rule other than the explicitly documented arithmetic
-  DMS-MPS rule.
+- infer any mixing rule other than the explicitly documented geometric-epsilon,
+  arithmetic-sigma DMS-MPS rule.
 
 Those integrations should be done only after the standalone oil structures and
 force-field assignment have been tested.
