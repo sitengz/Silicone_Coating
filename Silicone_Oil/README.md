@@ -26,11 +26,11 @@ From WSL:
 
 ```bash
 cd "/mnt/c/Users/siteng/Documents/Simulation from Github/Silicone_Oil"
-g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
+g++ -std=c++14 -O2 -Wall -Wextra -Wpedantic \
     oil_generator.cpp -o oil_generator
 ```
 
-The code is written for C++17.
+The code is compatible with C++14 and newer compilers. C++17 can also be used.
 
 ## Default model
 
