@@ -20,6 +20,10 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kAvogadroScale = 0.602214076;
 constexpr double kBoundaryClearance = 1.0e-4;
+constexpr double kTimestepFs = 5.0;
+constexpr long long kEquilibrationSteps = 7000000;
+constexpr long long kViscosityProductionSteps = 20000000;
+constexpr int kStressSampleEverySteps = 10;
 
 constexpr double kDmsMass = 74.0;
 constexpr double kMpsBackboneMass = 59.1204;
@@ -160,6 +164,7 @@ struct OutputFiles {
     std::string submit_basename;
     std::string info;
     std::string info_basename;
+    std::string stress_basename;
     std::string case_name;
 };
 
@@ -1065,6 +1070,7 @@ OutputFiles output_files(const Settings& settings) {
     files.input_basename = "in." + files.case_name;
     files.submit_basename = "submit." + files.case_name + ".sh";
     files.info_basename = files.case_name + ".info";
+    files.stress_basename = "gk_stress." + files.case_name + ".dat";
     files.input = directory + files.input_basename;
     files.submit = directory + files.submit_basename;
     files.info = directory + files.info_basename;
@@ -1249,7 +1255,7 @@ void write_input(
         << "# DMS-MPS mixing: geometric epsilon and arithmetic sigma.\n";
     write_pair_matrix(out, hot_temperature, true);
     out << "\n"
-        << "timestep        5.0\n"
+        << "timestep        " << kTimestepFs << "\n"
         << "thermo          1000\n"
         << "thermo_style    custom step temp density lx ly lz pxx pyy pzz "
         << "etotal epair ebond eangle edihed\n"
@@ -1296,7 +1302,29 @@ void write_input(
         << "fix             integrate all npt temp 300.0 300.0 50.0 "
         << "iso 1.0 1.0 500.0\n"
         << "run             1000000\n"
-        << "write_data      data." << files.case_name << ".npt_eq nocoeff\n";
+        << "write_data      data." << files.case_name << ".npt_eq nocoeff\n"
+        << "unfix           integrate\n\n"
+        << "# 100 ns Green-Kubo production at 300 K and fixed volume\n"
+        << "# At 5 fs/step, 20,000,000 steps = 100,000,000 fs = 100 ns.\n"
+        << "# The dedicated stress file contains only time, pxy, pxz, and pyz.\n"
+        << "undump          traj\n"
+        << "reset_timestep  0 time 0.0\n"
+        << "thermo          100000\n"
+        << "thermo_style    custom time pxy pxz pyz\n"
+        << "thermo_modify   format float %.12g\n"
+        << "variable        gk_time equal time\n"
+        << "variable        gk_pxy equal pxy\n"
+        << "variable        gk_pxz equal pxz\n"
+        << "variable        gk_pyz equal pyz\n"
+        << "fix             integrate all nvt temp 300.0 300.0 50.0\n"
+        << "fix             gk_output all print " << kStressSampleEverySteps
+        << " \"${gk_time} ${gk_pxy} ${gk_pxz} ${gk_pyz}\" "
+        << "file " << files.stress_basename
+        << " screen no title \"# time_fs pxy_atm pxz_atm pyz_atm\"\n"
+        << "run             " << kViscosityProductionSteps << "\n"
+        << "unfix           gk_output\n"
+        << "unfix           integrate\n"
+        << "write_data      data." << files.case_name << ".nvt_gk_300K nocoeff\n";
     if (!out) throw std::runtime_error("Failed while writing input file: " + files.input);
 }
 
@@ -1418,7 +1446,9 @@ void write_info(
         << "    \"data\": \"" << json_escape(files.data_basename) << "\",\n"
         << "    \"lammps_input\": \"" << json_escape(files.input_basename) << "\",\n"
         << "    \"slurm_submit\": \"" << json_escape(files.submit_basename) << "\",\n"
-        << "    \"model_info\": \"" << json_escape(files.info_basename) << "\"\n"
+        << "    \"model_info\": \"" << json_escape(files.info_basename) << "\",\n"
+        << "    \"green_kubo_stress_output\": \""
+        << json_escape(files.stress_basename) << "\"\n"
         << "  },\n"
         << "  \"composition\": {\n"
         << "    \"chain_length\": " << settings.length << ",\n"
@@ -1503,8 +1533,22 @@ void write_info(
         << compression_scale << ",\n"
         << "    \"hot_temperature_K\": 800.0,\n"
         << "    \"final_temperature_K\": 300.0,\n"
-        << "    \"timestep_fs\": 5.0,\n"
-        << "    \"total_run_steps\": 7000000\n"
+        << "    \"timestep_fs\": " << kTimestepFs << ",\n"
+        << "    \"equilibration_steps\": " << kEquilibrationSteps << ",\n"
+        << "    \"green_kubo_ensemble\": \"NVT\",\n"
+        << "    \"green_kubo_temperature_K\": 300.0,\n"
+        << "    \"green_kubo_production_steps\": "
+        << kViscosityProductionSteps << ",\n"
+        << "    \"green_kubo_production_time_ns\": "
+        << kViscosityProductionSteps * kTimestepFs / 1.0e6 << ",\n"
+        << "    \"stress_sample_every_steps\": "
+        << kStressSampleEverySteps << ",\n"
+        << "    \"stress_sample_interval_fs\": "
+        << kStressSampleEverySteps * kTimestepFs << ",\n"
+        << "    \"stress_columns\": [\"time_fs\", \"pxy_atm\", "
+           "\"pxz_atm\", \"pyz_atm\"],\n"
+        << "    \"total_run_steps\": "
+        << kEquilibrationSteps + kViscosityProductionSteps << "\n"
         << "  }\n"
         << "}\n";
     if (!out) throw std::runtime_error("Failed while writing info file: " + files.info);
@@ -1538,6 +1582,9 @@ void report(
         << "  whole chains inside primary box: yes (image flags 0 0 0)\n"
         << "  scripted 800 K compression target: "
         << settings.target_density << " g/cm^3\n"
+        << "  Green-Kubo production: 100 ns at 300 K NVT, stress every "
+        << kStressSampleEverySteps * kTimestepFs << " fs\n"
+        << "  runtime stress output: " << files.stress_basename << '\n'
         << "  wrote: " << files.data << ", " << files.input << ", "
         << files.submit << ", " << files.info << '\n';
 }
