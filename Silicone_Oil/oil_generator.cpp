@@ -99,6 +99,11 @@ double radians(double degrees) {
     return degrees * kPi / 180.0;
 }
 
+template <typename T>
+T clamp_value(T value, T lower, T upper) {
+    return std::max(lower, std::min(value, upper));
+}
+
 struct Settings {
     int length = 16;
     int chains = 625;
@@ -303,7 +308,7 @@ void resolve_composition(Settings& settings) {
         requested_mps_count =
             settings.length * settings.mps_monomer_percent / 100.0;
     }
-    settings.mps_per_chain = std::clamp(
+    settings.mps_per_chain = clamp_value(
         static_cast<int>(std::lround(requested_mps_count)), 0, settings.length);
 }
 
@@ -492,7 +497,7 @@ Vec3 interior_pendant_position(
     const double theta = radians(kMpsPendantAngleDegrees);
     const double projection_denominator = dot(bisector, toward_left);
     double bisector_scale = std::cos(theta) / projection_denominator;
-    bisector_scale = std::clamp(bisector_scale, -1.0, 1.0);
+    bisector_scale = clamp_value(bisector_scale, -1.0, 1.0);
     const double normal_scale =
         std::sqrt(std::max(0.0, 1.0 - bisector_scale * bisector_scale));
     const Vec3 direction =
@@ -737,7 +742,7 @@ private:
         auto index = [&](double value) {
             int result = static_cast<int>(std::floor((value + half) / cell_width_));
             if (result == cells_per_axis_) result = cells_per_axis_ - 1;
-            return std::clamp(result, 0, cells_per_axis_ - 1);
+            return clamp_value(result, 0, cells_per_axis_ - 1);
         };
         return {index(position.x), index(position.y), index(position.z)};
     }
@@ -982,9 +987,9 @@ System generate_system(
                 base_anchor.z + jitter(rng) * cell_spacing.z
             };
             const Vec3 anchor = {
-                std::clamp(requested_anchor.x, anchor_lower.x, anchor_upper.x),
-                std::clamp(requested_anchor.y, anchor_lower.y, anchor_upper.y),
-                std::clamp(requested_anchor.z, anchor_lower.z, anchor_upper.z)
+                clamp_value(requested_anchor.x, anchor_lower.x, anchor_upper.x),
+                clamp_value(requested_anchor.y, anchor_lower.y, anchor_upper.y),
+                clamp_value(requested_anchor.z, anchor_lower.z, anchor_upper.z)
             };
             std::vector<Vec3> positions;
             positions.reserve(rotated.size());
