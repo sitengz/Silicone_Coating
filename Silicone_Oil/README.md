@@ -16,7 +16,9 @@ submit.<case>.sh
 
 The `.info` file is valid JSON and records the composition, realized MPS
 monomer and weight percentages, type populations, topology counts, box size,
-random seeds, and mixing-rule choice.
+random seeds, mixing-rule choice, and Green-Kubo production settings. During
+the LAMMPS run, a fifth file named `gk_stress.<case>.dat` is created for
+viscosity analysis.
 
 ## Compile
 
@@ -297,8 +299,9 @@ Examples:
 
 ## Generated LAMMPS workflow
 
-The companion input follows the V22/V35 seven-million-step structure without
-the crosslinking operation:
+The companion input first follows the V22/V35 seven-million-step
+equilibration structure without the crosslinking operation, then adds a
+100 ns Green-Kubo production stage:
 
 ```text
 1M  initial relaxation at 800 K
@@ -307,6 +310,7 @@ the crosslinking operation:
 2M  extended equilibration at 800 K
 1M  cooling from 800 K to 300 K under isotropic NPT
 1M  final 300 K equilibration under isotropic NPT
+20M  100 ns viscosity production at 300 K under NVT
 ```
 
 Before dynamics, the input minimizes the structure and creates 800 K
@@ -319,7 +323,39 @@ is scaled by:
 
 The high-temperature repulsive matrix is active for the first five million
 steps. The input then switches to the explicit 300 K `lj/gromacs` matrix before
-cooling. The timestep is 5 fs, matching the V22/V35 workflow.
+cooling. The timestep is 5 fs, matching the V22/V35 workflow. The complete
+workflow is 27 million steps: 7 million equilibration steps followed by
+20 million production steps.
+
+### Green-Kubo stress output
+
+After the final 300 K NPT equilibration, the barostat is removed and the final
+equilibrated volume is held fixed for a 100 ns NVT trajectory at 300 K. The
+production timestep counter and accumulated time are reset to zero.
+
+The atom-coordinate dump is stopped before this long production stage. Instead,
+LAMMPS writes the instantaneous off-diagonal pressure components every 10
+timesteps, corresponding to a 50 fs sampling interval:
+
+```text
+gk_stress.<case>.dat
+```
+
+The file has one header followed by exactly four columns:
+
+```text
+# time_fs pxy_atm pxz_atm pyz_atm
+```
+
+Thus a completed 100 ns run contains 2,000,000 stress samples. The pressure
+components are in atmospheres because the input uses LAMMPS `real` units. No
+time averaging is applied before writing, preserving the instantaneous stress
+series needed for Green-Kubo autocorrelation analysis.
+
+The generated Slurm script still requests 48 hours. Confirm from the shorter
+equilibration tests that 27 million steps fit within that wall time; otherwise,
+increase the Slurm time request within the limits of the selected Nova
+partition.
 
 The Slurm script uses the same Nova module configuration and quoted output
 redirection as the tested V22/V35 scripts:
