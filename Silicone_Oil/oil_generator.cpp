@@ -1288,8 +1288,9 @@ void write_input(
         << "run             1000000\n"
         << "unfix           compress\n\n"
         << "# Relax at the compressed dimensions\n"
-        << "run             1000000\n\n"
-        << "# Extended 800 K equilibration at fixed dimensions\n"
+        << "run             1000000\n\n";
+
+    out << "# Extended 800 K equilibration at fixed dimensions\n"
         << "run             2000000\n"
         << "unfix           integrate\n"
         << "write_data      data." << files.case_name << ".eq_800 nocoeff\n\n"
