@@ -36,10 +36,10 @@ is written.
 
 ## Compile
 
-From WSL:
+From the repository root:
 
 ```bash
-cd "/mnt/c/Users/siteng/Documents/Simulation from Github/Analysis"
+cd Analysis
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
     z_profile.cpp -o z_profile
 ```
@@ -58,12 +58,13 @@ The required inputs are the final data file and its matching `.info` file:
 ./z_profile DATA_FILE INFO_FILE
 ```
 
-For the supplied V22 test system:
+For a V22 test system, replace `DATA_DIRECTORY` with the directory containing
+the matching data and `.info` files:
 
 ```bash
 ./z_profile \
-    /home/siteng/makedata/V22/10/data.V22_PDMS_N32_10wt.npt_eq \
-    /home/siteng/makedata/V22/10/V22_PDMS_N32_10wt.info
+    DATA_DIRECTORY/data.V22_PDMS_N32_10wt.npt_eq \
+    DATA_DIRECTORY/V22_PDMS_N32_10wt.info
 ```
 
 The default result is written in the current directory as:
