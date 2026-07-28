@@ -1354,7 +1354,7 @@ void write_submit(const OutputFiles& files) {
         << "#SBATCH --job-name=" << sanitize_job_name(files.case_name) << "\n"
         << "#SBATCH --time=48:00:00\n"
         << "#SBATCH --nodes=1\n"
-        << "#SBATCH --ntasks-per-node=48\n"
+        << "#SBATCH --ntasks-per-node=96\n"
         << "#SBATCH --mem=200G\n"
         << "#SBATCH --partition=nova\n"
         << "#SBATCH --mail-user=siteng@iastate.edu\n"
