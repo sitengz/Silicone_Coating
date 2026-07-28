@@ -966,7 +966,9 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
             << "unfix           xlink\n";
     }
 
-    out << "write_data      data." << suffix << ".xlink_800 nocoeff\n\n"
+    out << "thermo_style    custom step temp density lx ly lz pxx pyy pzz"
+        << " etotal epair ebond eangle edihed\n\n"
+        << "write_data      data." << suffix << ".xlink_800 nocoeff\n\n"
         << "# Restore the reacted-bond equilibrium length and 300 K pair interaction\n"
         << "bond_coeff      2 115.4086 2.801\n"
         << "pair_style      lj/gromacs 12 15\n";
