@@ -1030,7 +1030,7 @@ void write_submit_script(const OutputFiles& files) {
         << "#SBATCH --output=slurm-%j.out\n"
         << "#SBATCH --error=slurm-%j.err\n\n"
         << "set -euo pipefail\n"
-        << "cd -- \"$(dirname -- \"${BASH_SOURCE[0]}\")\"\n\n"
+        << "cd -- \"${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}\"\n\n"
         << "module purge\n"
         << "module load intel/22.3.1\n"
         << "module load mpi/2021.7.1\n"
