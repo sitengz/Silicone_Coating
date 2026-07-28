@@ -27,10 +27,19 @@ g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
 ```
 
 ```text
-data.V22_no_oil
-in.V22_no_oil
-submit.V22_no_oil.sh
-V22_no_oil.info
+V22_no_oil/
+├── data.V22_no_oil
+├── in.V22_no_oil
+├── submit.V22_no_oil.sh
+└── V22_no_oil.info
+```
+
+Every run creates a case-named folder in the current directory. To submit the
+generated case:
+
+```bash
+cd V22_no_oil
+sbatch submit.V22_no_oil.sh
 ```
 
 ## Explicit oil examples
@@ -129,10 +138,13 @@ convention. This is an intentional change from older formulation inputs.
 | `--spacing X` | Formulation placement spacing |
 | `--thickness X` | Fixed film thickness |
 | `--seed N` | Moderator seed |
-| `--output FILE` | Override generated case name |
+| `--output FILE` | Override the data filename and generated case-folder name |
 | `--help` | Print built-in help |
 
 `M2` is always calculated from `M2=2*M1/functionality`. Oil chain count is
 calculated from the requested weight percentage using the actual PDMS/PMPS
 masses. The realized composition and topology are recorded in the `.info`
 manifest.
+
+For example, `--output results/data.test_case` creates
+`results/test_case/` and puts all four generated files inside it.
