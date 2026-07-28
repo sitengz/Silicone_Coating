@@ -22,10 +22,10 @@ viscosity analysis.
 
 ## Compile
 
-From WSL:
+From the repository root:
 
 ```bash
-cd "/mnt/c/Users/siteng/Documents/Simulation from Github/Oil"
+cd Oil
 g++ -std=c++14 -O2 -Wall -Wextra -Wpedantic \
     oil_generator.cpp -o oil_generator
 ```
