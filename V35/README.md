@@ -109,7 +109,8 @@ prints and records the realized values.
 - `copolymer` requires exactly one of `--mps-percent` or `--mps-wt`.
 - Copolymer sequences may be `random`, `alternating`, or `block`.
 - Every oil chain is placed wholly inside the primary box.
-- Oil chains initially occupy the region from the z midplane toward positive z.
+- Oil chains initially occupy the central 40% of the box, from `-0.20 Lz` to
+  `+0.20 Lz`.
 - Oil chain count is calculated from real molecular masses, not bead count.
 
 Legacy `--n3`, `--m3`, `--filler-length`, and `--filler-wt` inputs are rejected
@@ -181,7 +182,7 @@ should come from the corresponding equilibrated bulk result.
 | `--mps-wt X` | MPS repeat-unit weight percentage within copolymer |
 | `--sequence random|alternating|block` | Copolymer sequence |
 | `--oil-seed N` | Oil sequence, conformation, and placement seed |
-| `--oil-min-separation X` | Initial oil-to-other minimum distance |
+| `--oil-min-separation X` | Initial oil/moderator-to-other minimum distance |
 | `--n1 N`, `--m1 M` | Network-strand length and count |
 | `--n2 N` | Cross-linker length |
 | `--n4 N`, `--m4 M` | Moderator size and count |
@@ -199,6 +200,17 @@ should come from the corresponding equilibrated bulk result.
 | `--help` | Print built-in command help |
 
 `M2` is always calculated from `M2=2*M1/functionality`.
+
+## Initial component placement
+
+- Component 1 is placed from the bottom of the box upward.
+- Component 2 is placed from the top of the box downward.
+- Component 3 oil is confined to the central 40% of `Lz`.
+- Component 4 moderators are placed from `+0.28 Lz` to `+0.38 Lz`.
+
+Oil placement rejects beads closer than `--oil-min-separation` to components 1
+and 2. Moderator placement applies the same rejection distance against all
+previously placed beads, including the oil and earlier moderators.
 
 For example, `--output results/data.test_case` creates
 `results/test_case/` and puts all four generated files inside it.
