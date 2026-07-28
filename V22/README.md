@@ -124,7 +124,7 @@ convention. This is an intentional change from older formulation inputs.
 | `--mps-wt X` | MPS repeat-unit weight percentage |
 | `--sequence MODE` | `random`, `alternating`, or `block` |
 | `--oil-seed N` | Oil sequence/conformation/placement seed |
-| `--oil-min-separation X` | Initial oil-to-other minimum distance |
+| `--oil-min-separation X` | Initial oil/moderator-to-other minimum distance |
 | `--n1 N`, `--m1 M` | Network-strand length and count |
 | `--n2 N` | Cross-linker length |
 | `--n4 N`, `--m4 M` | Moderator size and count |
@@ -145,6 +145,19 @@ convention. This is an intentional change from older formulation inputs.
 calculated from the requested weight percentage using the actual PDMS/PMPS
 masses. The realized composition and topology are recorded in the `.info`
 manifest.
+
+## Initial component placement
+
+- Component 1 is placed from the bottom of the box upward.
+- Component 2 is placed from the top of the box downward.
+- Component 3 oil is confined to the central 40% of `Lz`, from `-0.20 Lz` to
+  `+0.20 Lz`.
+- Component 4 moderators are placed in an upper-middle band, from `+0.28 Lz`
+  to `+0.38 Lz`.
+
+Oil placement rejects beads closer than `--oil-min-separation` to components 1
+and 2. Moderator placement applies the same rejection distance against all
+previously placed beads, including the oil and earlier moderators.
 
 For example, `--output results/data.test_case` creates
 `results/test_case/` and puts all four generated files inside it.
