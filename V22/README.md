@@ -12,8 +12,10 @@ defaults:
 
 ## Compile
 
+From the repository root:
+
 ```bash
-cd "/mnt/c/Users/siteng/Documents/Simulation from Github/V22"
+cd V22
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
     v22_generator.cpp -o v22_generator
 ```
