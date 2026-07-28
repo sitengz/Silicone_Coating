@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -113,7 +114,7 @@ void print_help(const char* program) {
         << "  --thickness X     fixed film thickness Lz in angstrom; omit for bulk\n"
         << "  --seed N          reproducible random seed (default: 5489)\n"
         << "  --output FILE     override the automatically generated data filename\n"
-        << "                    companion input, submit, and .info files share its directory\n"
+        << "                    a case folder is created beside this path\n"
         << "  --help             show this help\n";
 }
 
@@ -651,9 +652,10 @@ System build_system(const Settings& s, const Box& box) {
     return sys;
 }
 
-void write_data(const Settings& s, const System& sys, const Box& box) {
-    std::ofstream out(s.output);
-    if (!out) throw std::runtime_error("Cannot open output file: " + s.output);
+void write_data(const Settings& s, const System& sys, const Box& box,
+                const std::string& output_path) {
+    std::ofstream out(output_path);
+    if (!out) throw std::runtime_error("Cannot open output file: " + output_path);
     out << "LAMMPS data file for the " << kFormulationName
         << " formulation with explicit silicone-oil namespace\n\n"
         << sys.atoms.size() << " atoms\n5 atom types\n"
@@ -685,10 +687,11 @@ void write_data(const Settings& s, const System& sys, const Box& box) {
         out << "\nDihedrals\n\n";
         for (const auto& d : sys.dihedrals) out << d.id << ' ' << d.type << ' ' << d.a << ' ' << d.b << ' ' << d.c << ' ' << d.d << '\n';
     }
-    if (!out) throw std::runtime_error("Failed while writing output file: " + s.output);
+    if (!out) throw std::runtime_error("Failed while writing output file: " + output_path);
 }
 
 struct OutputFiles {
+    std::string directory;
     std::string data;
     std::string data_basename;
     std::string input;
@@ -706,34 +709,37 @@ struct LjParameters {
     double cutoff;
 };
 
-std::string basename_of(const std::string& path) {
-    const size_t slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
-std::string directory_of(const std::string& path) {
-    const size_t slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? "" : path.substr(0, slash + 1);
-}
-
 OutputFiles output_files(const Settings& s) {
     OutputFiles files;
-    files.data = s.output;
-    files.data_basename = basename_of(s.output);
+    const std::filesystem::path requested_data(s.output);
+    files.data_basename = requested_data.filename().string();
     if (files.data_basename.empty())
         throw std::runtime_error("Output filename cannot end with a directory separator");
     files.case_name = files.data_basename.rfind("data.", 0) == 0
         ? files.data_basename.substr(5) : files.data_basename;
-    if (files.case_name.empty())
+    if (files.case_name.empty() || files.case_name == "." || files.case_name == "..")
         throw std::runtime_error("Cannot derive a case name from the output filename");
-    const std::string directory = directory_of(s.output);
+
+    const std::filesystem::path directory =
+        requested_data.parent_path() / files.case_name;
+    files.directory = directory.string();
     files.input_basename = "in." + files.case_name;
     files.submit_basename = "submit." + files.case_name + ".sh";
     files.info_basename = files.case_name + ".info";
-    files.input = directory + files.input_basename;
-    files.submit = directory + files.submit_basename;
-    files.info = directory + files.info_basename;
+    files.data = (directory / files.data_basename).string();
+    files.input = (directory / files.input_basename).string();
+    files.submit = (directory / files.submit_basename).string();
+    files.info = (directory / files.info_basename).string();
     return files;
+}
+
+void create_output_directory(const OutputFiles& files) {
+    std::error_code error;
+    std::filesystem::create_directories(files.directory, error);
+    if (error)
+        throw std::runtime_error(
+            "Cannot create output directory " + files.directory + ": " +
+            error.message());
 }
 
 LjParameters lj_parameters(double temperature) {
@@ -959,7 +965,7 @@ void write_submit_script(const OutputFiles& files) {
         << "#SBATCH --output=slurm-%j.out\n"
         << "#SBATCH --error=slurm-%j.err\n\n"
         << "set -euo pipefail\n"
-        << "cd -- \"${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}\"\n\n"
+        << "cd -- \"$(dirname -- \"${BASH_SOURCE[0]}\")\"\n\n"
         << "module purge\n"
         << "module load intel/22.3.1\n"
         << "module load mpi/2021.7.1\n"
@@ -1167,7 +1173,8 @@ int main(int argc, char** argv) {
         }
         const System system = build_system(settings, box);
         const OutputFiles files = output_files(settings);
-        write_data(settings, system, box);
+        create_output_directory(files);
+        write_data(settings, system, box, files.data);
         write_lammps_input(settings, files);
         write_submit_script(files);
         write_info(settings, system, box, files);
