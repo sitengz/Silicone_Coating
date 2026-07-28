@@ -9,8 +9,10 @@ the oil model, chain length, and weight percentage are explicitly supplied.
 
 ## Compile
 
+From the repository root:
+
 ```bash
-cd "/mnt/c/Users/siteng/Documents/Simulation from Github/V35"
+cd V35
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
     v35_generator.cpp -o v35_generator
 ```
