@@ -29,6 +29,10 @@ namespace {
 
 constexpr double kAvogadroScale = 0.602; // Converts (g/mol)/(g/cm^3) to A^3.
 constexpr const char* kFormulationName = SILICONE_FORMULATION_NAME;
+constexpr double kOilZLowerFraction = -0.20;
+constexpr double kOilZUpperFraction = 0.20;
+constexpr double kModeratorZLowerFraction = 0.28;
+constexpr double kModeratorZUpperFraction = 0.38;
 
 struct Settings {
     int n1 = SILICONE_DEFAULT_N1, m1 = SILICONE_DEFAULT_M1;
@@ -100,7 +104,8 @@ void print_help(const char* program) {
         << "  --mps-wt X        MPS repeat-unit weight percentage for copolymer oil\n"
         << "  --sequence MODE   random, alternating, or block (default: random)\n"
         << "  --oil-seed N      oil sequence/conformation/packing seed (default: 20260727)\n"
-        << "  --oil-min-separation X  minimum oil-to-other distance in A (default: 4.5)\n"
+        << "  --oil-min-separation X  minimum oil/moderator-to-other distance in A"
+           " (default: 4.5)\n"
         << "\nNetwork and box controls:\n"
         << "  --functionality F cross-linker reactive sites, 3-16\n"
         << "  --crosslink-distribution MODE\n"
@@ -547,23 +552,80 @@ void add_linear_component(System& sys, int bead_count, int molecule_count, int c
     }
 }
 
-void add_star_moderators(System& sys, const Settings& s, const Box& box, std::mt19937& rng) {
+double minimum_image(double delta, double length) {
+    return delta - std::round(delta / length) * length;
+}
+
+bool overlaps_existing(const std::vector<silicone_oil::Vec3>& candidate,
+                       const System& sys, const Box& box,
+                       double minimum_separation, bool periodic_z) {
+    const double minimum_squared = minimum_separation * minimum_separation;
+    for (const silicone_oil::Vec3& position : candidate) {
+        for (const Atom& atom : sys.atoms) {
+            double dx = minimum_image(position.x - atom.x, box.lx);
+            double dy = minimum_image(position.y - atom.y, box.ly);
+            double dz = position.z - atom.z;
+            if (periodic_z) dz = minimum_image(dz, box.lz);
+            if (dx*dx + dy*dy + dz*dz < minimum_squared)
+                return true;
+        }
+    }
+    return false;
+}
+
+void add_star_moderators(System& sys, const Settings& s, const Box& box,
+                         std::mt19937& rng) {
     const double margin = s.bond_length;
     if (box.lx <= 2.0*margin || box.ly <= 2.0*margin)
         throw std::runtime_error("Lateral box dimensions are too small for a star moderator");
     std::uniform_real_distribution<double> xdist(-box.lx/2 + margin, box.lx/2 - margin);
     std::uniform_real_distribution<double> ydist(-box.ly/2 + margin, box.ly/2 - margin);
-    std::uniform_real_distribution<double> zdist(0.02 * box.lz, 0.12 * box.lz);
+    std::uniform_real_distribution<double> zdist(
+        kModeratorZLowerFraction * box.lz,
+        kModeratorZUpperFraction * box.lz);
     for (int i = 0; i < s.m4; ++i) {
+        std::vector<silicone_oil::Vec3> candidate;
+        bool accepted = false;
+        for (int attempt = 0; attempt < 10000 && !accepted; ++attempt) {
+            const double x = xdist(rng);
+            const double y = ydist(rng);
+            const double z = zdist(rng);
+            const double b = s.bond_length;
+            candidate = {
+                {x,     y,     z},
+                {x + b, y,     z},
+                {x - b, y,     z},
+                {x,     y + b, z},
+                {x,     y - b, z}
+            };
+            accepted = !overlaps_existing(
+                candidate, sys, box, s.oil_minimum_separation,
+                s.thickness <= 0.0);
+        }
+        if (!accepted) {
+            std::ostringstream message;
+            message << "Could not place moderator " << i + 1
+                    << " without overlap in the upper-middle z region. "
+                       "Reduce the minimum separation, component loading, "
+                       "or initial density.";
+            throw std::runtime_error(message.str());
+        }
+
         const int molecule_id = static_cast<int>(sys.atoms.empty() ? 1 : sys.atoms.back().molecule + 1);
         const int center = static_cast<int>(sys.atoms.size()) + 1;
-        const double x = xdist(rng), y = ydist(rng), z = zdist(rng), b = s.bond_length;
         // Preserve the legacy force-field mapping: ordinary center, type-2 arms.
-        sys.atoms.push_back({center,     molecule_id, 1, 0.0, x,     y,     z});
-        sys.atoms.push_back({center + 1, molecule_id, 2, 0.0, x + b, y,     z});
-        sys.atoms.push_back({center + 2, molecule_id, 2, 0.0, x - b, y,     z});
-        sys.atoms.push_back({center + 3, molecule_id, 2, 0.0, x,     y + b, z});
-        sys.atoms.push_back({center + 4, molecule_id, 2, 0.0, x,     y - b, z});
+        for (std::size_t bead = 0; bead < candidate.size(); ++bead) {
+            const silicone_oil::Vec3& position = candidate[bead];
+            sys.atoms.push_back({
+                center + static_cast<int>(bead),
+                molecule_id,
+                bead == 0 ? 1 : 2,
+                0.0,
+                position.x,
+                position.y,
+                position.z
+            });
+        }
         for (int arm = 1; arm <= 4; ++arm)
             sys.bonds.push_back({static_cast<int>(sys.bonds.size()) + 1, 2, center, center + arm});
         for (int a = 1; a <= 4; ++a)
@@ -586,7 +648,8 @@ void add_silicone_oil(System& sys, const Settings& s, const Box& box) {
     oil.sequence = s.sequence;
     oil.seed = s.oil_seed;
     oil.minimum_separation = s.oil_minimum_separation;
-    oil.positive_z_placement = true;
+    oil.z_lower_fraction = kOilZLowerFraction;
+    oil.z_upper_fraction = kOilZUpperFraction;
     const silicone_oil::Box oil_box{
         box.lx, box.ly, box.lz, s.thickness <= 0.0
     };
@@ -1071,7 +1134,9 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"chain_mass_g_per_mol\": " << oil_chain_mass(s) << ",\n"
         << "    \"sequence\": \"" << json_escape(s.sequence) << "\",\n"
         << "    \"minimum_separation_angstrom\": " << s.oil_minimum_separation << ",\n"
-        << "    \"initial_z_region\": \"midplane_to_positive_z\",\n"
+        << "    \"initial_z_region\": \"central_40_percent_of_box\",\n"
+        << "    \"initial_z_lower_fraction_of_Lz\": " << kOilZLowerFraction << ",\n"
+        << "    \"initial_z_upper_fraction_of_Lz\": " << kOilZUpperFraction << ",\n"
         << "    \"special_bonds_lj\": [0.0, 0.0, 0.5]\n"
         << "  },\n"
         << "  \"force_field\": {\n"
@@ -1108,6 +1173,16 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"volume_angstrom3\": " << volume << ",\n"
         << "    \"bond_length_angstrom\": " << s.bond_length << ",\n"
         << "    \"placement_spacing_angstrom\": " << s.spacing << ",\n"
+        << "    \"intercomponent_minimum_separation_angstrom\": "
+        << s.oil_minimum_separation << ",\n"
+        << "    \"component_z_placement\": {\n"
+        << "      \"network\": \"bottom_up\",\n"
+        << "      \"crosslinker\": \"top_down\",\n"
+        << "      \"silicone_oil_fraction_of_Lz\": ["
+        << kOilZLowerFraction << ", " << kOilZUpperFraction << "],\n"
+        << "      \"moderator_fraction_of_Lz\": ["
+        << kModeratorZLowerFraction << ", " << kModeratorZUpperFraction << "]\n"
+        << "    },\n"
         << "    \"network_strand_initial_shape\": \""
         << (SILICONE_FOLDED_NETWORK ? "folded_serpentine" : "straight_linear")
         << "\"\n"
