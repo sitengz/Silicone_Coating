@@ -39,10 +39,19 @@ Generate the default:
 It writes:
 
 ```text
-data.V35_no_oil
-in.V35_no_oil
-submit.V35_no_oil.sh
-V35_no_oil.info
+V35_no_oil/
+├── data.V35_no_oil
+├── in.V35_no_oil
+├── submit.V35_no_oil.sh
+└── V35_no_oil.info
+```
+
+Every run creates a case-named folder in the current directory. To submit the
+generated case:
+
+```bash
+cd V35_no_oil
+sbatch submit.V35_no_oil.sh
 ```
 
 ## Explicit oil commands
@@ -186,7 +195,10 @@ should come from the corresponding equilibrated bulk result.
 | `--spacing X` | Formulation placement spacing |
 | `--thickness X` | Enable film geometry with fixed `Lz` |
 | `--seed N` | Star-moderator seed |
-| `--output FILE` | Override data filename and companion case name |
+| `--output FILE` | Override the data filename and generated case-folder name |
 | `--help` | Print built-in command help |
 
 `M2` is always calculated from `M2=2*M1/functionality`.
+
+For example, `--output results/data.test_case` creates
+`results/test_case/` and puts all four generated files inside it.
