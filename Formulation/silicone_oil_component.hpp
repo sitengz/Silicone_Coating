@@ -111,7 +111,8 @@ struct Settings {
     std::string sequence = "random";
     std::uint32_t seed = 20260727u;
     double minimum_separation = 4.5;
-    bool positive_z_placement = true;
+    double z_lower_fraction = 0.0;
+    double z_upper_fraction = 0.5;
 };
 
 struct Atom {
@@ -637,6 +638,12 @@ inline Component generate(
         settings.mps_per_chain < 0 ||
         settings.mps_per_chain > settings.length)
         throw std::runtime_error("Invalid silicone-oil chain composition");
+    if (settings.z_lower_fraction < -0.5 ||
+        settings.z_upper_fraction > 0.5 ||
+        settings.z_lower_fraction >= settings.z_upper_fraction)
+        throw std::runtime_error(
+            "Silicone-oil z-placement fractions must satisfy "
+            "-0.5 <= lower < upper <= 0.5");
 
     Component component;
     component.atoms.reserve(static_cast<std::size_t>(settings.chains) *
@@ -680,13 +687,14 @@ inline Component generate(
             const Vec3 anchor_lower{
                 -0.5*box.lx + kBoundaryClearance - lower.x,
                 -0.5*box.ly + kBoundaryClearance - lower.y,
-                (settings.positive_z_placement ? 0.0 : -0.5*box.lz) +
+                settings.z_lower_fraction*box.lz +
                     kBoundaryClearance - lower.z
             };
             const Vec3 anchor_upper{
                 0.5*box.lx - kBoundaryClearance - upper.x,
                 0.5*box.ly - kBoundaryClearance - upper.y,
-                0.5*box.lz - kBoundaryClearance - upper.z
+                settings.z_upper_fraction*box.lz -
+                    kBoundaryClearance - upper.z
             };
             if (anchor_lower.x > anchor_upper.x ||
                 anchor_lower.y > anchor_upper.y ||
