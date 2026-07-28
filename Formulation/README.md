@@ -14,6 +14,11 @@ It contains the tested standalone Oil model's:
 - mass constants and mass-aware chain composition;
 - whole-chain placement inside orthogonal bulk or film boxes.
 
+In the formulation generators, oil chains are restricted to the central 40%
+of `Lz`. Their placement is checked against the bottom-up network and top-down
+cross-linkers. Star moderators occupy a separate upper-middle band and are
+rejected if any moderator bead is too close to a previously placed bead.
+
 The formulation reserves bond type 2 for network crosslinks and moderator
 bonds. Consequently, the standalone Oil bond mapping is remapped during
 integration:
@@ -37,4 +42,3 @@ g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
 
 Both wrappers use `special_bonds lj 0 0 0.5` for no-oil and oil-containing
 systems.
-
