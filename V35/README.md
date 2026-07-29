@@ -212,5 +212,13 @@ Oil placement rejects beads closer than `--oil-min-separation` to components 1
 and 2. Moderator placement applies the same rejection distance against all
 previously placed beads, including the oil and earlier moderators.
 
+## MSD production trajectory
+
+After the seven-million-step equilibration workflow, the generated input runs
+an additional one million steps at 300 K under NVT. It writes exactly 1000
+frames to `dump.msd.lammpstrj`, one frame every 1000 steps. Each frame contains
+`id mol type x y z ix iy iz`; the wrapped coordinates and image flags can be
+combined during MSD analysis.
+
 For example, `--output results/data.test_case` creates
 `results/test_case/` and puts all four generated files inside it.
