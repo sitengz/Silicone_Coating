@@ -33,6 +33,9 @@ constexpr double kOilZLowerFraction = -0.20;
 constexpr double kOilZUpperFraction = 0.20;
 constexpr double kModeratorZLowerFraction = 0.28;
 constexpr double kModeratorZUpperFraction = 0.38;
+constexpr long long kMsdProductionSteps = 1000000;
+constexpr int kMsdDumpEverySteps = 1000;
+constexpr int kMsdExpectedFrames = 1000;
 
 struct Settings {
     int n1 = SILICONE_DEFAULT_N1, m1 = SILICONE_DEFAULT_M1;
@@ -1010,7 +1013,18 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
     }
 
     out << "run             1000000\n"
-        << "write_data      data." << suffix << ".npt_eq nocoeff\n";
+        << "write_data      data." << suffix << ".npt_eq nocoeff\n\n"
+        << "# 1M-step, 300 K NVT trajectory for MSD analysis\n"
+        << "unfix           integrate\n"
+        << "undump          traj\n"
+        << "reset_timestep  0\n\n"
+        << "dump            msd all custom " << kMsdDumpEverySteps
+        << " dump.msd.lammpstrj id mol type x y z ix iy iz\n"
+        << "dump_modify     msd first no sort id\n\n"
+        << "fix             msd_integrate all nvt temp 300.0 300.0 50.0\n"
+        << "run             " << kMsdProductionSteps << "\n\n"
+        << "unfix           msd_integrate\n"
+        << "undump          msd\n";
 
     if (!out) throw std::runtime_error("Failed while writing LAMMPS input file: " + files.input);
 }
@@ -1216,8 +1230,19 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"cold_lj\": {\"epsilon\": " << cold.epsilon << ", \"sigma\": " << cold.sigma
         << ", \"cutoff\": " << cold.cutoff << "},\n"
         << "    \"timestep_fs\": 5.0,\n"
-        << "    \"total_run_steps\": 7000000,\n"
-        << "    \"bond_creation_active_steps\": 4000000\n"
+        << "    \"equilibration_run_steps\": 7000000,\n"
+        << "    \"total_run_steps\": 8000000,\n"
+        << "    \"bond_creation_active_steps\": 4000000,\n"
+        << "    \"msd_production\": {\n"
+        << "      \"ensemble\": \"NVT\",\n"
+        << "      \"temperature_K\": 300.0,\n"
+        << "      \"steps\": " << kMsdProductionSteps << ",\n"
+        << "      \"duration_ns\": 5.0,\n"
+        << "      \"dump_every_steps\": " << kMsdDumpEverySteps << ",\n"
+        << "      \"expected_frames\": " << kMsdExpectedFrames << ",\n"
+        << "      \"trajectory_file\": \"dump.msd.lammpstrj\",\n"
+        << "      \"coordinates\": \"wrapped x y z with image flags ix iy iz\"\n"
+        << "    }\n"
         << "  }\n"
         << "}\n";
     if (!out) throw std::runtime_error("Failed while writing model info file: " + files.info);
