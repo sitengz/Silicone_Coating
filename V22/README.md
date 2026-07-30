@@ -179,3 +179,14 @@ combined during MSD analysis.
 
 For example, `--output results/data.test_case` creates
 `results/test_case/` and puts all four generated files inside it.
+
+## Generated file descriptions
+
+- `data.<case>` is the initial LAMMPS data file containing the simulation box,
+  atoms, bonds, angles, and dihedrals.
+- `in.<case>` is the complete LAMMPS workflow for 800 K relaxation and
+  crosslinking, cooling, 300 K equilibration, and the final MSD trajectory.
+  V22 uses a bond-creation probability of `0.1`.
+- `submit.<case>.sh` is the one-node, 96-task Slurm submission script.
+- `<case>.info` is a JSON manifest containing composition, geometry,
+  force-field, topology, random-seed, and simulation settings.

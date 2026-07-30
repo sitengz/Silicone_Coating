@@ -23,6 +23,7 @@
 #define SILICONE_DEFAULT_M1 306
 #define SILICONE_DEFAULT_FUNCTIONALITY 4
 #define SILICONE_FOLDED_NETWORK 1
+#define SILICONE_CROSSLINK_PROBABILITY 0.5
 #endif
 
 namespace {
@@ -36,6 +37,8 @@ constexpr double kModeratorZUpperFraction = 0.38;
 constexpr long long kMsdProductionSteps = 1000000;
 constexpr int kMsdDumpEverySteps = 1000;
 constexpr int kMsdExpectedFrames = 1000;
+constexpr double kCrosslinkCreationProbability =
+    SILICONE_CROSSLINK_PROBABILITY;
 
 struct Settings {
     int n1 = SILICONE_DEFAULT_N1, m1 = SILICONE_DEFAULT_M1;
@@ -936,7 +939,8 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         out << "# Lateral compression with crosslinking at fixed film thickness\n"
             << "fix             integrate all nvt temp 800.0 800.0 50.0\n"
             << "fix             xlink all bond/create 1 2 3 " << hot.cutoff
-            << " 2 iparam 1 1 jparam 1 1 prob 0.1 348154\n"
+            << " 2 iparam 1 1 jparam 1 1 prob "
+            << kCrosslinkCreationProbability << " 348154\n"
             << "thermo_style    custom step temp density etotal epair ebond eangle"
             << " edihed f_xlink[1] f_xlink[2] bonds\n"
             << "fix             compress all deform 1 x scale " << compression_scale
@@ -953,7 +957,8 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         out << "# Isotropic compression with crosslinking at 800 K\n"
             << "fix             integrate all nvt temp 800.0 800.0 50.0\n"
             << "fix             xlink all bond/create 1 2 3 " << hot.cutoff
-            << " 2 iparam 1 1 jparam 1 1 prob 0.1 348154\n"
+            << " 2 iparam 1 1 jparam 1 1 prob "
+            << kCrosslinkCreationProbability << " 348154\n"
             << "thermo_style    custom step temp density etotal epair ebond eangle"
             << " edihed f_xlink[1] f_xlink[2] bonds\n"
             << "fix             compress all deform 1 x scale " << compression_scale
@@ -1235,6 +1240,8 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"equilibration_run_steps\": 7000000,\n"
         << "    \"total_run_steps\": 8000000,\n"
         << "    \"bond_creation_active_steps\": 4000000,\n"
+        << "    \"bond_creation_probability\": "
+        << kCrosslinkCreationProbability << ",\n"
         << "    \"msd_production\": {\n"
         << "      \"ensemble\": \"NVT\",\n"
         << "      \"temperature_K\": 300.0,\n"

@@ -380,3 +380,16 @@ This version generates periodic bulk oil only. It does not yet:
 
 Those integrations should be done only after the standalone oil structures and
 force-field assignment have been tested.
+
+## Generated file descriptions
+
+- `data.<case>` is the initial LAMMPS data file containing the periodic box,
+  oil atoms, and bonded topology.
+- `in.<case>` is the complete LAMMPS workflow for 800 K relaxation and
+  compression, cooling, 300 K equilibration, and the 100 ns Green-Kubo NVT
+  production run.
+- `submit.<case>.sh` is the one-node, 96-task Slurm submission script.
+- `<case>.info` is a JSON manifest containing composition, sequence,
+  force-field, topology, random-seed, and production settings.
+- `gk_stress.<case>.dat` is created during the LAMMPS run and contains
+  `time_fs`, `pxy`, `pxz`, and `pyz` for viscosity analysis.
