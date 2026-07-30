@@ -110,6 +110,16 @@ All systems use the complete Oil-generator pair matrices and:
 special_bonds lj 0 0 0.5
 ```
 
+Every DMS–MPS cross interaction (types 1–3 with types 4–5) uses:
+
+```text
+epsilon_ij = 0.579966 * sqrt(epsilon_ii * epsilon_jj)
+sigma_ij   = (sigma_ii + sigma_jj) / 2
+```
+
+The epsilon prefactor is applied at both 800 K and 300 K. Pure DMS and pure
+PMPS terms are unchanged.
+
 This includes the no-oil reference so comparisons use the same global 1–4 LJ
 convention. This is an intentional change from older formulation inputs.
 
