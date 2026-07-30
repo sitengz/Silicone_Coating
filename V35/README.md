@@ -141,9 +141,13 @@ The complete 800 K and 300 K pair matrices are written explicitly. Types 1–3
 share the DMS nonbonded model. DMS–MPS interactions use:
 
 ```text
-epsilon_ij = sqrt(epsilon_ii * epsilon_jj)
+epsilon_ij = 0.579966 * sqrt(epsilon_ii * epsilon_jj)
 sigma_ij   = (sigma_ii + sigma_jj) / 2
 ```
+
+The epsilon prefactor applies to every DMS–MPS pair: atom types 1–3 with atom
+types 4–5. It is applied to both the 800 K and 300 K matrices. Pure DMS and
+pure PMPS terms are unchanged.
 
 ## Important 1–4 convention
 
