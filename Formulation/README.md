@@ -10,7 +10,7 @@ It contains the tested standalone Oil model's:
 - atom types 1, 4, and 5;
 - oil bond, angle, and dihedral classification;
 - 800 K and 300 K nonbonded matrices;
-- geometric-epsilon and arithmetic-sigma mixing rule;
+- `0.579966 ×` geometric-epsilon and arithmetic-sigma DMS–MPS mixing rule;
 - mass constants and mass-aware chain composition;
 - whole-chain placement inside orthogonal bulk or film boxes.
 
