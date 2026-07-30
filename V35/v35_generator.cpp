@@ -633,7 +633,7 @@ void add_star_moderators(System& sys, const Settings& s, const Box& box,
             });
         }
         for (int arm = 1; arm <= 4; ++arm)
-            sys.bonds.push_back({static_cast<int>(sys.bonds.size()) + 1, 2, center, center + arm});
+            sys.bonds.push_back({static_cast<int>(sys.bonds.size()) + 1, 1, center, center + arm});
         for (int a = 1; a <= 4; ++a)
             for (int c = a + 1; c <= 4; ++c)
                 sys.angles.push_back({static_cast<int>(sys.angles.size()) + 1, 1, center + a, center, center + c});
@@ -1172,7 +1172,7 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"dms_mps_mixing\": \"0.579966 * geometric epsilon and arithmetic sigma\",\n"
         << "    \"dms_mps_epsilon_factor\": "
         << silicone_oil::kDmsMpsEpsilonFactor << ",\n"
-        << "    \"oil_bond_type_remap\": {\"dms_or_mixed\": 1, \"formulation_crosslink\": 2, \"mps_backbone\": 3, \"mps_pendant\": 4}\n"
+        << "    \"oil_bond_type_remap\": {\"dms_or_mixed\": 1, \"moderator_internal\": 1, \"formulation_crosslink\": 2, \"mps_backbone\": 3, \"mps_pendant\": 4}\n"
         << "  },\n"
         << "  \"crosslinker\": {\n"
         << "    \"functionality\": " << s.crosslinker_functionality << ",\n"

@@ -128,8 +128,8 @@ to prevent an unspecified filler from being generated accidentally.
 
 | Bond type | Meaning |
 |---:|---|
-| 1 | DMS or mixed DMS–MPS backbone |
-| 2 | Formulation crosslink and moderator bond |
+| 1 | DMS or mixed DMS–MPS backbone, including moderator center–arm bonds |
+| 2 | Formulation crosslink only |
 | 3 | MPS–MPS backbone |
 | 4 | MPS backbone–pendant |
 

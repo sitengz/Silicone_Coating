@@ -19,13 +19,13 @@ of `Lz`. Their placement is checked against the bottom-up network and top-down
 cross-linkers. Star moderators occupy a separate upper-middle band and are
 rejected if any moderator bead is too close to a previously placed bead.
 
-The formulation reserves bond type 2 for network crosslinks and moderator
-bonds. Consequently, the standalone Oil bond mapping is remapped during
-integration:
+The formulation reserves bond type 2 exclusively for network crosslinks.
+Moderator center–arm bonds use the ordinary DMS bond type 1. Consequently, the
+standalone Oil bond mapping is remapped during integration:
 
 ```text
-integrated type 1 = DMS or mixed backbone
-integrated type 2 = formulation crosslink/moderator
+integrated type 1 = DMS or mixed backbone, including moderator center-arm bonds
+integrated type 2 = formulation crosslink
 integrated type 3 = MPS-MPS backbone
 integrated type 4 = MPS pendant
 ```

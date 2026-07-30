@@ -542,7 +542,7 @@ inline void add_topology(
 ) {
     const int length = static_cast<int>(is_mps.size());
     for (int i = 0; i + 1 < length; ++i) {
-        // Bond type 2 belongs to formulation crosslinks/moderators.
+        // Bond type 2 is reserved exclusively for formulation crosslinks.
         const int type = is_mps[static_cast<std::size_t>(i)] &&
                          is_mps[static_cast<std::size_t>(i + 1)] ? 3 : 1;
         component.bonds.push_back({

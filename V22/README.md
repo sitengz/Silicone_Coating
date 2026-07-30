@@ -100,9 +100,10 @@ only in x/y after compression.
 | 4 | MPS backbone |
 | 5 | MPS pendant |
 
-Bond type 2 remains reserved for formulation crosslinks and moderator bonds.
-Oil bonds use type 1 for DMS/mixed backbone, type 3 for MPS–MPS backbone, and
-type 4 for MPS pendant bonds.
+Bond type 2 is reserved exclusively for formulation crosslinks. Moderator
+center–arm bonds use the ordinary DMS bond type 1. Oil bonds use type 1 for
+DMS/mixed backbone, type 3 for MPS–MPS backbone, and type 4 for MPS pendant
+bonds.
 
 All systems use the complete Oil-generator pair matrices and:
 
