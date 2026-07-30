@@ -38,6 +38,7 @@ constexpr double kMpsPendantEpsilon = 0.848858275;
 constexpr double kMpsPendantSigma = 5.96750575;
 constexpr double kMpsBackbonePendantEpsilon = 1.33135725;
 constexpr double kMpsBackbonePendantSigma = 5.72729065;
+constexpr double kDmsMpsEpsilonFactor = 0.579966;
 
 struct Vec3 {
     double x = 0.0;
@@ -780,10 +781,12 @@ inline PairParameters pair_parameters(
     };
     if (type_i <= 3 && type_j <= 3) return dms;
     if (type_i <= 3 && type_j == 4)
-        return {std::sqrt(dms.epsilon * backbone.epsilon),
+        return {kDmsMpsEpsilonFactor *
+                    std::sqrt(dms.epsilon * backbone.epsilon),
                 0.5 * (dms.sigma + backbone.sigma)};
     if (type_i <= 3 && type_j == 5)
-        return {std::sqrt(dms.epsilon * pendant.epsilon),
+        return {kDmsMpsEpsilonFactor *
+                    std::sqrt(dms.epsilon * pendant.epsilon),
                 0.5 * (dms.sigma + pendant.sigma)};
     if (type_i == 4 && type_j == 4) return backbone;
     if (type_i == 4 && type_j == 5) return backbone_pendant;
