@@ -36,7 +36,8 @@ constexpr double kModeratorZLowerFraction = 0.28;
 constexpr double kModeratorZUpperFraction = 0.38;
 constexpr long long kMsdProductionSteps = 1000000;
 constexpr int kMsdDumpEverySteps = 1000;
-constexpr int kMsdExpectedFrames = 1000;
+constexpr long long kMsdExpectedFrames =
+    kMsdProductionSteps / kMsdDumpEverySteps + 1;
 constexpr double kCrosslinkCreationProbability =
     SILICONE_CROSSLINK_PROBABILITY;
 

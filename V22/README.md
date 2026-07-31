@@ -173,8 +173,9 @@ previously placed beads, including the oil and earlier moderators.
 ## MSD production trajectory
 
 After the seven-million-step equilibration workflow, the generated input runs
-an additional one million steps at 300 K under NVT. It writes exactly 1000
-frames to `dump.msd.lammpstrj`, one frame every 1000 steps. Each frame contains
+an additional one million steps at 300 K under NVT. It writes 1,001 frames to
+`dump.msd.lammpstrj`: the timestep-zero frame followed by one frame every
+1,000 steps through timestep 1,000,000. Each frame contains
 `id mol type x y z ix iy iz`; the wrapped coordinates and image flags can be
 combined during MSD analysis.
 
