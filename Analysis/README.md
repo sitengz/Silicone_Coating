@@ -1,4 +1,10 @@
-# Final-snapshot z-profile analyzer
+# V22/V35 final-snapshot analysis
+
+This directory contains two independent analyzers. `z_profile.cpp` measures
+the through-thickness composition, while `final_snapshot_analyzer.cpp`
+measures realized crosslinking, reactive-network connectivity, topology, and
+network-strand end-to-end distances. Both consume one final LAMMPS data file
+and its matching generator `.info` file.
 
 `z_profile.cpp` calculates the through-thickness composition and density
 profile of a four-component V22 or V35 system from one final LAMMPS data file.
@@ -365,3 +371,159 @@ smoothFillerFraction = movmean(fillerFraction, 5, 'omitnan');
 4. Run this analyzer on the final `*.npt_eq` data file and matching `.info`.
 5. Load the numeric profile into MATLAB for plotting, smoothing, averaging
    between independent samples, or further interfacial analysis.
+
+## Crosslinking, connectivity, and end-to-end analyzer
+
+`final_snapshot_analyzer.cpp` is intended for the `*.npt_eq` snapshot produced
+by the current V22 or V35 generator and the matching model-info version-2
+`.info` file. It works for bulk and film geometries and for no-oil, PDMS,
+PMPS, and copolymer formulations.
+
+Do not pair a data file and `.info` file from different generated cases. The
+analyzer uses molecule-ID ranges, initial topology counts, reactive-site
+counts, crosslink bond mapping, crosslinker functionality, geometry, and run
+length from the `.info` file. Several exact checks deliberately stop the run
+instead of reporting misleading conversion data.
+
+Version-1 `.info` files are not accepted. Those files predate the rule that
+reserves bond type 2 exclusively for bonds created by `fix bond/create`; their
+moderator bonds can therefore make a final crosslink count ambiguous.
+
+### Compile
+
+```bash
+cd Analysis
+g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
+    final_snapshot_analyzer.cpp -o final_snapshot_analyzer
+```
+
+### Run
+
+```bash
+./final_snapshot_analyzer FINAL_DATA_FILE MODEL_INFO_FILE
+```
+
+For example:
+
+```bash
+./final_snapshot_analyzer \
+    DATA_DIRECTORY/data.V22_PDMS_N32_10wt.npt_eq \
+    DATA_DIRECTORY/V22_PDMS_N32_10wt.info
+```
+
+By default, both outputs are placed in a folder named from `case_name`:
+
+```text
+V22_PDMS_N32_10wt/
+├── final_snapshot_report.V22_PDMS_N32_10wt.txt
+└── strand_end_to_end.V22_PDMS_N32_10wt.dat
+```
+
+Paths can be overridden independently:
+
+```bash
+./final_snapshot_analyzer DATA_FILE INFO_FILE \
+    --report-output my_report.txt \
+    --strand-output my_strands.dat
+```
+
+`--output` remains an alias for `--report-output`.
+
+### Crosslink calculations
+
+The current generators define:
+
+```text
+atom type 2 = unreacted network terminal or moderator arm
+atom type 3 = unreacted crosslinker site
+bond type 2 = newly created formulation crosslink only
+```
+
+`fix bond/create` changes each reacted type-2 and type-3 atom to type 1.
+Consequently, every valid crosslink consumes exactly one site of each type.
+The analyzer verifies all of the following before reporting conversion:
+
+```text
+net increase in bond count = number of bond-type-2 bonds
+number of bond-type-2 bonds = intermolecular formulation crosslinks
+final type-2 atoms + crosslinks = initial type-2 sites
+final type-3 atoms + crosslinks = initial type-3 sites
+```
+
+It also checks the site counts by component. A type-2 bond must join a
+crosslinker to either a network strand or a moderator. The report contains:
+
+- overall bond conversion using the smaller of the type-2 and type-3 site
+  totals as the stoichiometric maximum;
+- crosslinker conversion using all initial type-3 sites;
+- total type-2 site conversion;
+- network-terminal conversion and moderator-site conversion separately;
+- network--crosslinker and moderator--crosslinker bond counts; and
+- molecule-degree distributions for strands, crosslinkers, and moderators.
+
+For the current stoichiometry, `M2 * functionality = 2 * M1`. Moderator arms
+add extra type-2 sites, so the crosslinker/type-3 side is normally limiting.
+The crosslinker conversion is therefore the value most directly comparable to
+the intended 95% conversion target.
+
+### Reactive-network connectivity
+
+The connectivity graph includes all network strands, crosslinkers, and
+star-like moderators. Silicone-oil molecules are excluded because they do not
+participate in `fix bond/create`. Including moderators is important because a
+multifunctional moderator can connect more than one crosslinker and therefore
+change network connectivity.
+
+The report gives the number of linked and isolated reactive components, the
+network/crosslinker/moderator composition of the largest component, and its
+bead and mass fractions relative to all reactive material.
+
+### Network-strand end-to-end distances
+
+The end-to-end vector is defined from the first to the last bead of every
+bifunctional network strand. It is not restricted to reacted strands. The
+program reconstructs the vector by summing bead-to-bead displacements along
+the generator-defined ordered covalent path. Minimum-image displacement is
+used in periodic directions; z is not wrapped for a film. This remains valid
+when endpoint image flags are absent or a long strand spans a periodic box
+more than once.
+
+The report provides statistics for:
+
+- all network strands;
+- strands whose two terminal sites both reacted; and
+- fully reacted strands belonging to the largest reactive component.
+
+The strand table is headerless and numeric for direct MATLAB loading. Its
+columns are:
+
+| Column | Quantity |
+|---:|---|
+| 1 | Network-strand molecule ID |
+| 2 | First terminal atom ID |
+| 3 | Last terminal atom ID |
+| 4 | Intermolecular crosslink degree |
+| 5 | Both terminal sites reacted: `1` yes, `0` no |
+| 6 | Strand belongs to largest reactive component: `1` yes, `0` no |
+| 7 | End-to-end `dx` (Å) |
+| 8 | End-to-end `dy` (Å) |
+| 9 | End-to-end `dz` (Å) |
+| 10 | End-to-end distance (Å) |
+| 11 | Squared end-to-end distance (Å²) |
+
+MATLAB example:
+
+```matlab
+ree = load('strand_end_to_end.V22_PDMS_N32_10wt.dat');
+R = ree(:,10);
+R2 = ree(:,11);
+fullyReacted = ree(:,5) == 1;
+largestNetwork = ree(:,6) == 1;
+```
+
+### Scope
+
+One final snapshot supports realized composition, topology, crosslink
+conversion, static connectivity, and static end-to-end statistics. Reaction
+kinetics require the LAMMPS log or time-resolved trajectory. MSD, diffusion,
+and relaxation calculations require the generated production trajectory.
