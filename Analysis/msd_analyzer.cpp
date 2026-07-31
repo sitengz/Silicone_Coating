@@ -30,6 +30,8 @@ enum class Selection { kAll, kFiller };
 enum class ParticleMode { kBeads, kMoleculeCom };
 enum class AveragingMode { kRaw, kTimeAveraged };
 
+constexpr double kTimeAveragedDefaultFitEndFraction = 0.90;
+
 struct Vec3 {
     double x = 0.0;
     double y = 0.0;
@@ -454,8 +456,9 @@ void print_help(const char *program) {
         << "  --help                 show this reference\n\n"
         << "The default is the recommended oil self-diffusion observable: exact\n"
         << "time-averaged, mass-weighted filler-chain COM MSD with whole-system\n"
-        << "COM drift removed. If no fit range is given, the last half of the\n"
-        << "available lag-time range is used as a preliminary fit.\n";
+        << "COM drift removed. By default, time-averaged MSD is fit over\n"
+        << "50-90% of the available lag-time range, excluding the sparsely\n"
+        << "sampled final 10%. Raw MSD retains the 50-100% default.\n";
 }
 
 Options parse_options(int argc, char **argv) {
@@ -1159,7 +1162,10 @@ DiffusionFits calculate_fits(
     fits.requested_start_ns = std::isfinite(options.fit_start_ns)
         ? options.fit_start_ns : 0.5 * maximum_ns;
     fits.requested_end_ns = std::isfinite(options.fit_end_ns)
-        ? options.fit_end_ns : maximum_ns;
+        ? options.fit_end_ns
+        : (options.averaging_mode == AveragingMode::kTimeAveraged
+            ? kTimeAveragedDefaultFitEndFraction * maximum_ns
+            : maximum_ns);
     if (fits.requested_end_ns <= fits.requested_start_ns ||
         fits.requested_start_ns > maximum_ns) {
         throw std::runtime_error("diffusion fit range does not overlap MSD times");
@@ -1309,7 +1315,11 @@ void write_report(
            << "MSD points                  : " << points.size() << "\n\n"
            << "DIFFUSION FIT\n"
            << "Fit range source            : "
-           << (fits.automatic_range ? "automatic last half" : "command line/default bound")
+           << (fits.automatic_range
+                ? (options.averaging_mode == AveragingMode::kTimeAveraged
+                    ? "automatic 50%-90% (final 10% excluded)"
+                    : "automatic 50%-100%")
+                : "command line/default bound")
            << "\n"
            << "Requested fit range (ns)    : "
            << fits.requested_start_ns << " to " << fits.requested_end_ns << "\n"

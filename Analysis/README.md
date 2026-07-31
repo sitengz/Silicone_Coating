@@ -635,9 +635,11 @@ self-diffusion coefficient.
 ### Diffusion coefficient
 
 The analyzer performs an ordinary linear regression of MSD against lag time.
-If no range is supplied, the last half of the available lag-time range is used
-as a preliminary fit. A deliberate range should be selected after plotting
-the complete MSD:
+For time-averaged MSD, the automatic preliminary fit uses 50-90% of the
+available lag-time range. The final 10% is excluded because those long lags
+have the fewest independent time origins and therefore the greatest sampling
+noise. Raw single-origin MSD retains a 50-100% automatic range. A deliberate
+range should still be selected after plotting the complete MSD:
 
 ```bash
 ./msd_analyzer dump.msd.lammpstrj CASE.info \
