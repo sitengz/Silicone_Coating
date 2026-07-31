@@ -536,6 +536,12 @@ timestep zero and one every 1,000 simulation steps through timestep 1,000,000.
 With the 5 fs timestep, neighboring frames are 5 ps apart and the complete
 trajectory spans 5 ns.
 
+The analyzer derives the expected frame count from the production steps and
+dump interval, including the timestep-zero snapshot. Consequently, older
+`.info` files that declare 1,000 frames are interpreted as 1,001 when their
+timing fields specify 1,000,000 steps and a 1,000-step dump interval. The
+report preserves the declared value and records a legacy-metadata warning.
+
 The trajectory must contain:
 
 ```text

@@ -63,6 +63,7 @@ struct ModelInfo {
     long long production_steps = 0;
     double production_duration_ns = 0.0;
     long long dump_every_steps = 0;
+    long long declared_expected_frames = 0;
     long long expected_frames = 0;
 };
 
@@ -359,10 +360,14 @@ ModelInfo parse_model_info(const std::string &path) {
     info.production_steps = json_integer(production, "steps");
     info.production_duration_ns = json_number(production, "duration_ns");
     info.dump_every_steps = json_integer(production, "dump_every_steps");
-    info.expected_frames = json_integer(production, "expected_frames");
-    if (info.timestep_fs <= 0.0 || info.dump_every_steps <= 0) {
+    info.declared_expected_frames =
+        json_integer(production, "expected_frames");
+    if (info.timestep_fs <= 0.0 || info.production_steps < 0 ||
+        info.dump_every_steps <= 0) {
         throw std::runtime_error("invalid MSD timing fields in info file");
     }
+    info.expected_frames =
+        info.production_steps / info.dump_every_steps + 1;
     return info;
 }
 
@@ -1299,7 +1304,9 @@ void write_report(
     output << "Stored coordinate memory    : " << stored_memory_mib << " MiB\n\n"
            << "TRAJECTORY\n"
            << "Frames read                 : " << trajectory.timesteps.size()
-           << " / " << info.expected_frames << " expected\n"
+           << " / " << info.expected_frames << " expected from timing\n"
+           << "Info-declared frame count   : "
+           << info.declared_expected_frames << "\n"
            << "First/last timestep         : " << trajectory.timesteps.front()
            << " / " << trajectory.timesteps.back() << "\n"
            << "Observed frame interval     : " << observed_interval << " steps\n"
@@ -1360,6 +1367,14 @@ int main(int argc, char **argv) {
         const ModelInfo info = parse_model_info(options.info_file);
         resolve_output_paths(options, info);
         std::vector<std::string> warnings;
+        if (info.declared_expected_frames != info.expected_frames) {
+            warnings.push_back(
+                "info file declares " +
+                std::to_string(info.declared_expected_frames) +
+                " expected frames, but production steps and dump interval "
+                "imply " + std::to_string(info.expected_frames) +
+                " including timestep zero; using the timing-derived count");
+        }
         const TrajectoryData trajectory =
             read_trajectory(options, info, warnings);
         std::vector<MsdPoint> points;
