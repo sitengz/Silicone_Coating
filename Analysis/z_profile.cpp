@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -18,6 +19,8 @@
 namespace {
 
 constexpr std::size_t kComponentCount = 4;
+constexpr double kAvogadro = 6.02214076e23;
+constexpr double kAngstromCubedToCmCubed = 1.0e-24;
 
 enum ComponentIndex : std::size_t {
     kNetwork = 0,
@@ -66,12 +69,26 @@ struct AtomRecord {
     std::size_t component = 0;
 };
 
+struct RegionData {
+    int code = 0;
+    double lower = 0.0;
+    double upper = 0.0;
+    double width = 0.0;
+    long long total_count = 0;
+    long long filler_count = 0;
+    double total_mass = 0.0;
+    double filler_mass = 0.0;
+};
+
 struct Options {
     std::string data_file;
     std::string info_file;
     std::string output_file;
+    std::string region_output_file;
+    std::string report_output_file;
     double requested_sample_spacing = 1.0;
     double requested_window_width = 1.0;
+    double requested_surface_width = 0.0;
 };
 
 std::string trim(const std::string &input) {
@@ -430,22 +447,40 @@ double parse_positive_double(const std::string &text, const std::string &option)
     return value;
 }
 
+double mass_density_g_per_cm3(double mass_g_per_mol, double volume_angstrom3) {
+    if (volume_angstrom3 <= 0.0) {
+        throw std::runtime_error("density volume must be positive");
+    }
+    return (mass_g_per_mol / kAvogadro) /
+           (volume_angstrom3 * kAngstromCubedToCmCubed);
+}
+
 void print_help(const char *program) {
     std::cout
         << "Usage:\n"
         << "  " << program
         << " DATA_FILE INFO_FILE [--sample-spacing X] [--window-width X]\n"
-        << "      [--output FILE]\n\n"
+        << "      [--surface-width X] [--output FILE] [--region-output FILE]\n"
+        << "      [--report-output FILE]\n\n"
         << "Analyze one final LAMMPS atom_style full data file along z.\n"
         << "The four components are identified from molecule-ID ranges in the\n"
-        << "V22/V35 JSON .info file. Output is a numeric-only table for MATLAB.\n\n"
+        << "V22/V35 JSON .info file. Existing profile columns are preserved and\n"
+        << "filler-density, enrichment, wall-distance, and region columns are\n"
+        << "appended. Outputs are numeric-only tables for MATLAB.\n\n"
         << "Options:\n"
         << "  --sample-spacing X  Distance between profile points in angstrom\n"
         << "                      (default: 1.0)\n"
         << "  --window-width X    Width of the counting window in angstrom\n"
         << "                      (default: 1.0)\n"
         << "  --bin-width X       Alias for --window-width\n"
-        << "  --output FILE       Output path (default: z_profile.<case>.dat)\n"
+        << "  --surface-width X   Film layer assigned to each surface in angstrom\n"
+        << "                      (default: min(20 A, 20% of film thickness))\n"
+        << "  --output FILE       Profile path\n"
+        << "                      (default: <case>/z_profile.<case>.dat)\n"
+        << "  --region-output FILE  Region summary path\n"
+        << "                      (default: <case>/z_regions.<case>.dat)\n"
+        << "  --report-output FILE  Text report path\n"
+        << "                      (default: <case>/z_report.<case>.txt)\n"
         << "  --help              Show this command reference\n";
 }
 
@@ -471,6 +506,12 @@ Options parse_options(int argc, char **argv) {
             }
             options.requested_window_width =
                 parse_positive_double(argv[++i], argument);
+        } else if (argument == "--surface-width") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--surface-width requires a value");
+            }
+            options.requested_surface_width =
+                parse_positive_double(argv[++i], "--surface-width");
         } else if (argument == "--output") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("--output requires a file path");
@@ -478,6 +519,24 @@ Options parse_options(int argc, char **argv) {
             options.output_file = argv[++i];
             if (options.output_file.empty()) {
                 throw std::runtime_error("--output cannot be empty");
+            }
+        } else if (argument == "--region-output") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error(
+                    "--region-output requires a file path");
+            }
+            options.region_output_file = argv[++i];
+            if (options.region_output_file.empty()) {
+                throw std::runtime_error("--region-output cannot be empty");
+            }
+        } else if (argument == "--report-output") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error(
+                    "--report-output requires a file path");
+            }
+            options.report_output_file = argv[++i];
+            if (options.report_output_file.empty()) {
+                throw std::runtime_error("--report-output cannot be empty");
             }
         } else if (begins_with(argument, "--")) {
             throw std::runtime_error("unknown option: " + argument);
@@ -500,9 +559,32 @@ void analyze(const Options &input_options) {
     const ModelInfo model = parse_model_info(options.info_file);
     const DataHeader header = parse_data_header(options.data_file);
 
+    const std::string sample_name = sanitized_case_name(model.case_name);
+    const std::filesystem::path sample_directory(sample_name);
+    if (options.output_file.empty() || options.region_output_file.empty() ||
+        options.report_output_file.empty()) {
+        std::error_code directory_error;
+        std::filesystem::create_directories(
+            sample_directory, directory_error);
+        if (directory_error) {
+            throw std::runtime_error(
+                "cannot create sample output directory " +
+                sample_directory.string() + ": " +
+                directory_error.message());
+        }
+    }
+
     if (options.output_file.empty()) {
-        options.output_file =
-            "z_profile." + sanitized_case_name(model.case_name) + ".dat";
+        options.output_file = (sample_directory /
+            ("z_profile." + sample_name + ".dat")).string();
+    }
+    if (options.region_output_file.empty()) {
+        options.region_output_file = (sample_directory /
+            ("z_regions." + sample_name + ".dat")).string();
+    }
+    if (options.report_output_file.empty()) {
+        options.report_output_file = (sample_directory /
+            ("z_report." + sample_name + ".txt")).string();
     }
 
     std::array<long long, kComponentCount> cumulative_molecules{{0, 0, 0, 0}};
@@ -516,6 +598,18 @@ void analyze(const Options &input_options) {
     }
 
     const double lz = header.zhi - header.zlo;
+    const bool periodic_z = model.geometry == "bulk";
+    double surface_width = 0.0;
+    if (!periodic_z) {
+        surface_width =
+            options.requested_surface_width > 0.0
+                ? options.requested_surface_width
+                : std::min(20.0, 0.20 * lz);
+        if (2.0 * surface_width >= lz) {
+            throw std::runtime_error(
+                "twice the surface width must be smaller than the film thickness");
+        }
+    }
     if (options.requested_window_width > lz) {
         throw std::runtime_error(
             "window width cannot exceed the final box thickness");
@@ -544,6 +638,7 @@ void analyze(const Options &input_options) {
     long long atoms_read = 0;
     double system_mass = 0.0;
     std::array<long long, kComponentCount> observed_counts{{0, 0, 0, 0}};
+    std::array<double, kComponentCount> observed_masses{{0.0, 0.0, 0.0, 0.0}};
     std::vector<AtomRecord> atoms;
     atoms.reserve(static_cast<std::size_t>(header.atoms));
     std::string line;
@@ -596,6 +691,7 @@ void analyze(const Options &input_options) {
         const double clamped_z = std::min(header.zhi, std::max(header.zlo, z));
         atoms.push_back(AtomRecord{clamped_z, mass, component});
         ++observed_counts[component];
+        observed_masses[component] += mass;
         system_mass += mass;
         ++atoms_read;
     }
@@ -621,12 +717,60 @@ void analyze(const Options &input_options) {
         }
     }
 
+    const double lx = header.xhi - header.xlo;
+    const double ly = header.yhi - header.ylo;
+    const double cross_section_area = lx * ly;
+    const double system_volume = cross_section_area * lz;
+    const double filler_mass = observed_masses[kFiller];
+    const double matrix_mass = system_mass - filler_mass;
+    const double global_filler_mass_fraction = filler_mass / system_mass;
+    const double mean_total_density =
+        mass_density_g_per_cm3(system_mass, system_volume);
+    const double mean_filler_density =
+        mass_density_g_per_cm3(filler_mass, system_volume);
+    const double mean_matrix_density =
+        mass_density_g_per_cm3(matrix_mass, system_volume);
+
+    std::vector<RegionData> regions;
+    if (periodic_z) {
+        regions.push_back(RegionData{0, header.zlo, header.zhi, lz});
+    } else {
+        regions.push_back(
+            RegionData{-1, header.zlo, header.zlo + surface_width, surface_width});
+        regions.push_back(
+            RegionData{
+                0,
+                header.zlo + surface_width,
+                header.zhi - surface_width,
+                lz - 2.0 * surface_width});
+        regions.push_back(
+            RegionData{1, header.zhi - surface_width, header.zhi, surface_width});
+    }
+    for (const AtomRecord &atom : atoms) {
+        std::size_t region_index = 0;
+        if (!periodic_z) {
+            if (atom.z < header.zlo + surface_width) {
+                region_index = 0;
+            } else if (atom.z >= header.zhi - surface_width) {
+                region_index = 2;
+            } else {
+                region_index = 1;
+            }
+        }
+        RegionData &region = regions[region_index];
+        ++region.total_count;
+        region.total_mass += atom.mass;
+        if (atom.component == kFiller) {
+            ++region.filler_count;
+            region.filler_mass += atom.mass;
+        }
+    }
+
     std::vector<WindowData> windows(number_of_sample_points);
     std::vector<double> window_lower(number_of_sample_points, 0.0);
     std::vector<double> window_upper(number_of_sample_points, 0.0);
     std::vector<double> effective_window_width(number_of_sample_points, 0.0);
     const double half_window = 0.5 * window_width;
-    const bool periodic_z = model.geometry == "bulk";
 
     for (std::size_t point = 0; point < number_of_sample_points; ++point) {
         const double center =
@@ -681,6 +825,30 @@ void analyze(const Options &input_options) {
         const double relative_density =
             values.total_mass * lz /
             (system_mass * effective_window_width[point]);
+        const double window_volume =
+            cross_section_area * effective_window_width[point];
+        const double local_total_density =
+            mass_density_g_per_cm3(values.total_mass, window_volume);
+        const double local_filler_density =
+            mass_density_g_per_cm3(
+                values.component_masses[kFiller], window_volume);
+        const double local_matrix_density =
+            mass_density_g_per_cm3(
+                values.total_mass - values.component_masses[kFiller],
+                window_volume);
+        const double filler_density_relative =
+            local_filler_density / mean_filler_density;
+        const double distance_to_surface =
+            periodic_z
+                ? std::numeric_limits<double>::quiet_NaN()
+                : std::min(z_center - header.zlo, header.zhi - z_center);
+        int region_code = 0;
+        if (!periodic_z && z_center < header.zlo + surface_width) {
+            region_code = -1;
+        } else if (!periodic_z &&
+                   z_center >= header.zhi - surface_width) {
+            region_code = 1;
+        }
 
         output << (point + 1) << ' '
                << window_lower[point] << ' '
@@ -702,33 +870,148 @@ void analyze(const Options &input_options) {
                 output << " NaN";
             }
         }
+        output << ' ' << local_total_density
+               << ' ' << local_filler_density
+               << ' ' << local_matrix_density
+               << ' ' << filler_density_relative;
+        if (values.total_mass > 0.0) {
+            const double local_filler_mass_fraction =
+                values.component_masses[kFiller] / values.total_mass;
+            output << ' '
+                   << local_filler_mass_fraction / global_filler_mass_fraction;
+        } else {
+            output << " NaN";
+        }
+        if (std::isfinite(distance_to_surface)) {
+            output << ' ' << distance_to_surface;
+        } else {
+            output << " NaN";
+        }
+        output << ' ' << region_code;
         output << '\n';
     }
     if (!output) {
         throw std::runtime_error("failed while writing output file");
     }
 
-    std::cout << "Analyzed case: " << model.case_name << '\n'
-              << "Atoms: " << atoms_read << '\n'
-              << "Geometry: " << model.geometry << '\n'
-              << "Box z range: [" << header.zlo << ", " << header.zhi << "] A\n"
-              << "Requested sample spacing: "
-              << options.requested_sample_spacing << " A\n"
-              << "Number of sample points: " << number_of_sample_points << '\n'
-              << "Actual sample spacing: " << sample_spacing << " A\n"
-              << "Requested window width: "
-              << options.requested_window_width << " A\n"
-              << "Window spans: " << window_points << " sample spacing(s)\n"
-              << "Actual window width: " << window_width << " A\n"
-              << "Component molecule ranges:\n"
-              << "  network:     1-" << cumulative_molecules[kNetwork] << '\n'
-              << "  crosslinker: " << (cumulative_molecules[kNetwork] + 1)
-              << '-' << cumulative_molecules[kCrosslinker] << '\n'
-              << "  filler:      " << (cumulative_molecules[kCrosslinker] + 1)
-              << '-' << cumulative_molecules[kFiller] << '\n'
-              << "  moderator:   " << (cumulative_molecules[kFiller] + 1)
-              << '-' << cumulative_molecules[kModerator] << '\n'
-              << "Output: " << options.output_file << '\n';
+    std::vector<RegionData> output_regions = regions;
+    if (!periodic_z) {
+        RegionData combined_surface;
+        combined_surface.code = 2;
+        combined_surface.lower =
+            std::numeric_limits<double>::quiet_NaN();
+        combined_surface.upper =
+            std::numeric_limits<double>::quiet_NaN();
+        combined_surface.width = 2.0 * surface_width;
+        combined_surface.total_count =
+            regions.front().total_count + regions.back().total_count;
+        combined_surface.filler_count =
+            regions.front().filler_count + regions.back().filler_count;
+        combined_surface.total_mass =
+            regions.front().total_mass + regions.back().total_mass;
+        combined_surface.filler_mass =
+            regions.front().filler_mass + regions.back().filler_mass;
+        output_regions.push_back(combined_surface);
+    }
+
+    std::ofstream region_output(options.region_output_file);
+    if (!region_output) {
+        throw std::runtime_error(
+            "cannot create region output file: " +
+            options.region_output_file);
+    }
+    region_output << std::fixed << std::setprecision(12);
+    for (const RegionData &region : output_regions) {
+        const double region_volume = cross_section_area * region.width;
+        const double total_density =
+            mass_density_g_per_cm3(region.total_mass, region_volume);
+        const double region_filler_density =
+            mass_density_g_per_cm3(region.filler_mass, region_volume);
+        const double region_matrix_density =
+            mass_density_g_per_cm3(
+                region.total_mass - region.filler_mass, region_volume);
+        const double filler_fraction =
+            region.total_mass > 0.0
+                ? region.filler_mass / region.total_mass
+                : std::numeric_limits<double>::quiet_NaN();
+        const double filler_fraction_enrichment =
+            filler_fraction / global_filler_mass_fraction;
+
+        region_output << region.code << ' ';
+        if (std::isfinite(region.lower)) {
+            region_output << region.lower;
+        } else {
+            region_output << "NaN";
+        }
+        region_output << ' ';
+        if (std::isfinite(region.upper)) {
+            region_output << region.upper;
+        } else {
+            region_output << "NaN";
+        }
+        region_output << ' '
+                      << region.width << ' '
+                      << region.total_count << ' '
+                      << region.filler_count << ' '
+                      << total_density << ' '
+                      << region_filler_density << ' '
+                      << region_matrix_density << ' '
+                      << filler_fraction << ' '
+                      << region_filler_density / mean_filler_density << ' '
+                      << filler_fraction_enrichment << '\n';
+    }
+    if (!region_output) {
+        throw std::runtime_error("failed while writing region output file");
+    }
+
+    std::ostringstream report;
+    report << "Analyzed case: " << model.case_name << '\n'
+           << "Atoms: " << atoms_read << '\n'
+           << "Geometry: " << model.geometry << '\n'
+           << "Box z range: [" << header.zlo << ", " << header.zhi << "] A\n"
+           << "Requested sample spacing: "
+           << options.requested_sample_spacing << " A\n"
+           << "Number of sample points: " << number_of_sample_points << '\n'
+           << "Actual sample spacing: " << sample_spacing << " A\n"
+           << "Requested window width: "
+           << options.requested_window_width << " A\n"
+           << "Window spans: " << window_points << " sample spacing(s)\n"
+           << "Actual window width: " << window_width << " A\n"
+           << "Mean total density: " << mean_total_density << " g/cm^3\n"
+           << "Mean filler density: " << mean_filler_density << " g/cm^3\n"
+           << "Mean matrix density: " << mean_matrix_density << " g/cm^3\n"
+           << "Global filler mass fraction: "
+           << global_filler_mass_fraction << '\n';
+    if (!periodic_z) {
+        report << "Surface width: " << surface_width << " A\n"
+               << "Interior z range: ["
+               << header.zlo + surface_width << ", "
+               << header.zhi - surface_width << "] A\n";
+    }
+    report << "Component molecule ranges:\n"
+           << "  network:     1-" << cumulative_molecules[kNetwork] << '\n'
+           << "  crosslinker: " << (cumulative_molecules[kNetwork] + 1)
+           << '-' << cumulative_molecules[kCrosslinker] << '\n'
+           << "  filler:      " << (cumulative_molecules[kCrosslinker] + 1)
+           << '-' << cumulative_molecules[kFiller] << '\n'
+           << "  moderator:   " << (cumulative_molecules[kFiller] + 1)
+           << '-' << cumulative_molecules[kModerator] << '\n'
+           << "Profile output: " << options.output_file << '\n'
+           << "Region output: " << options.region_output_file << '\n'
+           << "Report output: " << options.report_output_file << '\n';
+
+    const std::string report_text = report.str();
+    std::cout << report_text;
+    std::ofstream report_output(options.report_output_file);
+    if (!report_output) {
+        throw std::runtime_error(
+            "cannot create report output file: " +
+            options.report_output_file);
+    }
+    report_output << report_text;
+    if (!report_output) {
+        throw std::runtime_error("failed while writing report output file");
+    }
 }
 
 }  // namespace

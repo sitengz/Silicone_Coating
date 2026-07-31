@@ -2,8 +2,10 @@
 
 `z_profile.cpp` calculates the through-thickness composition and density
 profile of a four-component V22 or V35 system from one final LAMMPS data file.
-It is designed for final equilibrated bulk or film configurations, so a
-trajectory containing many frames is not required.
+It emphasizes the neutral-oil filler density and enrichment needed to compare
+periodic bulk systems with wall-bounded films. It is designed for final
+equilibrated bulk or film configurations, so a trajectory containing many
+frames is not required.
 
 The analyzer reads:
 
@@ -67,20 +69,34 @@ the matching data and `.info` files:
     DATA_DIRECTORY/V22_PDMS_N32_10wt.info
 ```
 
-The default result is written in the current directory as:
+Each run creates an output folder named from the sample's `case_name` in the
+`.info` file. The two numeric results and a text copy of the run report are
+written together:
 
 ```text
-z_profile.V22_PDMS_N32_10wt.dat
+V22_PDMS_N32_10wt/
+├── z_profile.V22_PDMS_N32_10wt.dat
+├── z_regions.V22_PDMS_N32_10wt.dat
+└── z_report.V22_PDMS_N32_10wt.txt
 ```
 
-Choose an explicit output path with:
+This keeps independently analyzed samples separated when several analyses are
+run from the same directory. The report contains the same summary printed to
+the terminal, including the realized spacing, window width, densities,
+component molecule ranges, and output paths.
+
+Choose explicit output paths with:
 
 ```bash
 ./z_profile DATA_FILE INFO_FILE \
-    --output my_profile.dat
+    --output my_profile.dat \
+    --region-output my_regions.dat \
+    --report-output my_report.txt
 ```
 
-No source or input files are modified.
+An explicitly supplied path is used exactly as written. Any output whose path
+is not supplied still uses the sample-named folder. No source or input files
+are modified.
 
 ## Sample spacing and overlapping windows
 
@@ -146,9 +162,9 @@ estimating statistical uncertainty.
 
 ## Numeric output
 
-The output is a headerless, whitespace-separated numeric table so it can be
-loaded directly with MATLAB `load`. Each row is one sample point and contains
-14 columns:
+The profile output is a headerless, whitespace-separated numeric table so it
+can be loaded directly with MATLAB `load`. Each row is one sample point and
+contains 21 columns. Columns 1–14 retain the original layout:
 
 | Column | Quantity |
 |---:|---|
@@ -166,6 +182,13 @@ loaded directly with MATLAB `load`. Each row is one sample point and contains
 | 12 | Local cross-linker mass fraction |
 | 13 | Local filler mass fraction |
 | 14 | Local moderator mass fraction |
+| 15 | Local total mass density (g/cm³) |
+| 16 | Local filler mass density (g/cm³) |
+| 17 | Local non-filler matrix mass density (g/cm³) |
+| 18 | Local filler density divided by the whole-system mean filler density |
+| 19 | Local filler mass fraction divided by the global filler mass fraction |
+| 20 | Distance from the nearest wall (Å); `NaN` for periodic bulk |
+| 21 | Region code: `-1` lower surface, `0` interior/bulk, `1` upper surface |
 
 The raw component counts are retained in columns 7–10, allowing alternative
 normalization in MATLAB. When windows overlap, a bead can appear in several
@@ -211,18 +234,78 @@ network_fraction
   = 1
 ```
 
-The current V22 and V35 beads all have the same mass, so these mass fractions
-are also bead-number fractions. Reading masses from the data file keeps the
-calculation valid for future fillers whose bead types may have different
-masses.
+Mass fractions are calculated from the `Masses` section rather than assuming
+equal bead masses. This matters for the copolymer fillers, whose MPS bead types
+do not have the same masses as DMS beads. Raw bead counts remain available in
+columns 7–10.
 
 An empty window has zero counts and zero relative density. Its four component
 fractions are written as `NaN` because a `0/0` local composition is undefined.
 
+The two filler enrichment measures answer different questions:
+
+```text
+column 18 = local filler mass density / mean filler mass density
+column 19 = local filler mass fraction / global filler mass fraction
+```
+
+Column 18 includes local total-density changes. Column 19 isolates composition:
+a value above one means the local material is filler-enriched relative to the
+overall formulation.
+
+## Film surface and interior regions
+
+For film geometry, the lower and upper layers are assigned as operational
+surface regions:
+
+```text
+lower surface: zlo <= z < zlo + surface_width
+interior:      zlo + surface_width <= z < zhi - surface_width
+upper surface: zhi - surface_width <= z <= zhi
+```
+
+Set the layer thickness explicitly when comparing systems:
+
+```bash
+./z_profile FILM_DATA FILM_INFO \
+    --surface-width 20 \
+    --sample-spacing 1 \
+    --window-width 5
+```
+
+If omitted, `surface_width` is the smaller of 20 Å and 20% of the film
+thickness. This is an operational definition, not a claim that every
+interfacial effect ends at exactly that distance. Plot columns 18 or 19 against
+column 20 to check where the profile reaches its interior plateau, then rerun
+with a revised common width if needed.
+
+The region output is also a headerless numeric table. It contains one row for
+periodic bulk. A film contains lower-surface, interior, upper-surface, and
+combined-surface rows:
+
+| Column | Quantity |
+|---:|---|
+| 1 | Region code: `-1`, `0`, `1`, or `2` for both surfaces combined |
+| 2 | Region lower z bound (Å); `NaN` for the combined row |
+| 3 | Region upper z bound (Å); `NaN` for the combined row |
+| 4 | Total region width (Å) |
+| 5 | Total unique bead count |
+| 6 | Unique filler bead count |
+| 7 | Region total mass density (g/cm³) |
+| 8 | Region filler mass density (g/cm³) |
+| 9 | Region matrix mass density (g/cm³) |
+| 10 | Region filler mass fraction |
+| 11 | Region filler density divided by whole-system mean filler density |
+| 12 | Region filler mass fraction divided by global filler mass fraction |
+
+Unlike overlapping profile windows, each atom belongs to exactly one primary
+region. The combined-surface row is the sum of the lower and upper regions.
+
 ## MATLAB example
 
 ```matlab
-profile = load('z_profile.V22_PDMS_N32_10wt.dat');
+profile = load(fullfile('V22_PDMS_N32_10wt', ...
+    'z_profile.V22_PDMS_N32_10wt.dat'));
 
 z = profile(:,3);
 relativeDensity = profile(:,6);
@@ -230,11 +313,34 @@ networkFraction = profile(:,11);
 crosslinkerFraction = profile(:,12);
 fillerFraction = profile(:,13);
 moderatorFraction = profile(:,14);
+fillerDensity = profile(:,16);
+fillerEnrichment = profile(:,19);
+wallDistance = profile(:,20);
+regionCode = profile(:,21);
 
 figure;
 plot(z, fillerFraction, 'LineWidth', 1.5);
 xlabel('z (\AA)');
 ylabel('Local filler mass fraction');
+```
+
+For a film, plot both surfaces on a common distance-from-wall axis:
+
+```matlab
+filmRows = regionCode ~= 0;
+
+figure;
+scatter(wallDistance(filmRows), fillerEnrichment(filmRows), 20, ...
+        regionCode(filmRows), 'filled');
+xlabel('Distance from nearest wall (\AA)');
+ylabel('Filler enrichment');
+```
+
+Load the non-overlapping region summary with:
+
+```matlab
+regions = load(fullfile('V22_PDMS_N32_10wt', ...
+    'z_regions.V22_PDMS_N32_10wt.dat'));
 ```
 
 To verify the local normalization:
