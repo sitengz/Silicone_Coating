@@ -678,7 +678,10 @@ V22_Copolymer_N15_MPS8of15_random_10wt/
 
 Explicit paths can be supplied with `--output` and `--report-output`.
 
-The numeric MSD table is headerless for MATLAB. Its columns are:
+The numeric MSD table is headerless for MATLAB. The zero-lag point is not
+written because its MSD is always zero and the
+instantaneous diffusion ratios divide by zero. The first exported row is
+therefore lag index 1 with a positive lag time. Its columns are:
 
 | Column | Quantity |
 |---:|---|

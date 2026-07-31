@@ -1203,16 +1203,11 @@ void write_numeric_output(
     if (!output) throw std::runtime_error("cannot open MSD output: " + path);
     output << std::scientific << std::setprecision(10);
     for (const MsdPoint &point : points) {
+        if (point.time_ps <= 0.0) continue;
         const double time_ns = point.time_ps / 1000.0;
-        const double d3 = point.time_ps > 0.0
-            ? point.msd_3d / (6.0 * point.time_ps)
-            : std::numeric_limits<double>::quiet_NaN();
-        const double dxy = point.time_ps > 0.0
-            ? point.msd_xy / (4.0 * point.time_ps)
-            : std::numeric_limits<double>::quiet_NaN();
-        const double dz = point.time_ps > 0.0
-            ? point.msd_z / (2.0 * point.time_ps)
-            : std::numeric_limits<double>::quiet_NaN();
+        const double d3 = point.msd_3d / (6.0 * point.time_ps);
+        const double dxy = point.msd_xy / (4.0 * point.time_ps);
+        const double dz = point.msd_z / (2.0 * point.time_ps);
         output
             << point.lag_index << " "
             << point.lag_steps << " "
@@ -1272,6 +1267,9 @@ void write_report(
     const double stored_memory_mib =
         static_cast<double>(trajectory.stored_positions.size() * sizeof(Vec3)) /
         (1024.0 * 1024.0);
+    const long long exported_points = static_cast<long long>(std::count_if(
+        points.begin(), points.end(),
+        [](const MsdPoint &point) { return point.time_ps > 0.0; }));
     const auto ends = component_ends(info);
     output << std::fixed << std::setprecision(8);
     output << "MSD AND DIFFUSION ANALYSIS\n"
@@ -1312,7 +1310,9 @@ void write_report(
            << trajectory.box.length(0) << " "
            << trajectory.box.length(1) << " "
            << trajectory.box.length(2) << "\n"
-           << "MSD points                  : " << points.size() << "\n\n"
+           << "MSD points calculated       : " << points.size()
+           << " (including zero lag)\n"
+           << "Positive-lag rows exported  : " << exported_points << "\n\n"
            << "DIFFUSION FIT\n"
            << "Fit range source            : "
            << (fits.automatic_range
