@@ -1,10 +1,12 @@
 # V22/V35 analysis tools
 
-This directory contains three independent analyzers. `z_profile.cpp` measures
+This directory contains four independent analyzers. `z_profile.cpp` measures
 the through-thickness composition, `final_snapshot_analyzer.cpp` measures
 realized crosslinking and strand structure, and `msd_analyzer.cpp` measures
-translational motion and diffusion from `dump.msd.lammpstrj`. Every analyzer
-uses the matching generator `.info` file to identify the model correctly.
+translational motion and diffusion from `dump.msd.lammpstrj`.
+`phase_separation_analyzer.cpp` measures DMS/MPS composition fluctuations,
+domain length scales, and PMPS-rich chain clusters. Every analyzer uses the
+matching generator `.info` file to identify the model correctly.
 
 `z_profile.cpp` calculates the through-thickness composition and density
 profile of a four-component V22 or V35 system from one final LAMMPS data file.
@@ -724,3 +726,269 @@ ylabel('MSD (\AA^2)');
 A short trajectory excerpt is suitable for testing the parser and formulas,
 but not for reporting diffusion. Production diffusion analysis should use the
 complete trajectory and a visually confirmed linear fit interval.
+
+## DMS/MPS phase-separation analyzer
+
+`phase_separation_analyzer.cpp` quantifies PMPS-rich segregation in V22 and
+V35 formulation trajectories. It combines three measurements that answer
+different questions:
+
+1. a local-composition field and excess segregation index;
+2. the normalized DMS/MPS concentration structure factor; and
+3. intermolecular contact clusters of PMPS-containing oil chains.
+
+The analyzer automatically accepts either the final `data.*.npt_eq` snapshot
+or the existing `dump.msd.lammpstrj`, together with the matching model-info
+version-2 `.info` file. A final snapshot is sufficient for static morphology
+and is the recommended input when a PMPS-rich system is nearly frozen. The
+trajectory mode remains available when time-dependent coarsening is useful.
+It supports PMPS and DMS/MPS copolymer oils in both bulk and film systems.
+PDMS-only and no-oil cases contain no MPS markers and are intentionally
+rejected.
+
+### Repeat-marker definition
+
+Raw bead counts would bias the composition because one DMS repeat is one bead
+whereas one MPS repeat contains a backbone and a pendant bead. The analyzer
+therefore uses exactly one marker per repeat:
+
+```text
+DMS marker = atom type 1, 2, or 3
+MPS marker = atom type 4 (MPS backbone)
+type 5     = validated MPS pendant, not counted as a second repeat
+```
+
+The type-4 and type-5 counts must both equal
+`oil_chain_count * mps_repeats_per_chain` from the `.info` file. All type-4
+and type-5 atoms must lie inside the component-3 molecule-ID range. These
+checks prevent a mismatched trajectory and `.info` file from producing a
+plausible but incorrect phase metric.
+
+### Compile
+
+```bash
+cd Analysis
+g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic \
+    phase_separation_analyzer.cpp -o phase_separation_analyzer
+```
+
+### Run
+
+Recommended static analysis:
+
+```bash
+./phase_separation_analyzer data.CASE.npt_eq CASE.info
+```
+
+Optional trajectory analysis:
+
+```bash
+./phase_separation_analyzer dump.msd.lammpstrj CASE.info
+```
+
+The default settings are:
+
+```text
+frame stride        = 10
+target grid spacing = 8 A
+MPS contact cutoff  = 8 A
+q maximum           = 80% of the grid Nyquist limit
+```
+
+In trajectory mode, the final frame is always analyzed even if it is not on
+the requested stride. `--frame-stride` has no effect on a static snapshot.
+Controls and explicit output paths are available:
+
+```bash
+./phase_separation_analyzer DATA_OR_TRAJECTORY CASE.info \
+    --frame-stride 10 \
+    --grid-spacing 8.0 \
+    --contact-cutoff 8.0 \
+    --q-max 0.30 \
+    --output phase_metrics.dat \
+    --structure-output phase_structure_factor.dat \
+    --field-output phase_field_final.dat \
+    --report-output phase_report.txt
+```
+
+The grid dimensions are the nearest powers of two for the internal FFT.
+Consequently, the realized grid spacing can be slightly larger or smaller
+than the requested target and is recorded in the report. Use the same
+requested grid spacing when comparing formulations.
+
+### Local segregation index
+
+For each voxel, the local MPS repeat fraction is
+
+```text
+phi_i = N_MPS,i / (N_MPS,i + N_DMS,i)
+```
+
+The analyzer calculates the marker-count-weighted variance of `phi_i`. A
+finite system has nonzero variance even when species labels are randomly
+mixed, so the exact fixed-composition random-label variance is subtracted.
+The reported index is
+
+```text
+I = (variance_observed - variance_random)
+    / (phi_global*(1-phi_global) - variance_random)
+```
+
+`I` near zero is consistent with random mixing at the selected voxel scale;
+positive `I` indicates excess local segregation; and `I` approaching one
+indicates nearly pure local cells. Statistical fluctuations can make `I`
+slightly negative. The analyzer reports both a full 3D index and an XY index
+after integrating through z.
+
+For films, the XY index is the preferred phase-separation measure because it
+does not mistake ordinary wall-normal layering for lateral PMPS-rich domains.
+The existing `z_profile` analyzer should be used separately for surface
+segregation. For bulk systems, the 3D index is primary.
+
+### Concentration structure factor
+
+The normalized concentration mode is
+
+```text
+Scc_normalized(q) = |x_DMS*rho_MPS(q) - x_MPS*rho_DMS(q)|^2
+                    / (N*x_MPS*x_DMS)
+```
+
+An ideal random-label mixture has a baseline near one. Increasing low-q
+intensity indicates large-scale composition fluctuations. The strongest
+resolved peak gives the preliminary length scale
+
+```text
+domain spacing = 2*pi/q_peak
+```
+
+Bulk systems use a radially averaged 3D `Scc(q)`. Films use in-plane
+`Scc(q_xy)` after integrating through z, which isolates lateral domains from
+the average z profile. Species are deposited on the composition grid before
+the FFT, so the high-q result is grid-smoothed; this analyzer is designed for
+the low-q domain regime.
+
+If the peak occurs in the first q shell, the apparent domain size is limited
+by the simulation box. In that case `2*pi/q_peak` is a lower bound rather than
+a fully resolved domain diameter.
+
+### PMPS-chain contact clusters
+
+Two component-3 oil chains are connected when type-4 MPS markers from the two
+different molecules lie within `--contact-cutoff`, using minimum-image
+distances in periodic directions. Intramolecular contacts are excluded. The
+output includes:
+
+- the number of PMPS-containing chain clusters;
+- the number and fraction of chains in the largest cluster; and
+- the number of unique contacting chain pairs.
+
+The cutoff should eventually be selected from the first minimum of the
+intermolecular MPS--MPS radial distribution function. Until that reference is
+available, sensitivity should be checked with more than one reasonable
+cutoff rather than interpreting the default as a force-field constant.
+
+### Output files
+
+Default outputs are grouped by `case_name`:
+
+```text
+CASE/
+├── phase_metrics.CASE.dat
+├── phase_structure_factor.CASE.dat
+├── phase_field_final.CASE.dat
+└── phase_report.CASE.txt
+```
+
+All `.dat` files are headerless, whitespace-separated numeric tables for
+MATLAB.
+
+`phase_metrics` columns:
+
+| Column | Quantity |
+|---:|---|
+| 1 | Zero-based trajectory frame index |
+| 2 | LAMMPS timestep |
+| 3 | Time from first trajectory frame (ns) |
+| 4 | MPS repeat-marker count |
+| 5 | DMS repeat-marker count |
+| 6 | Global MPS repeat fraction |
+| 7 | Excess 3D segregation index |
+| 8 | Observed weighted 3D composition variance |
+| 9 | Random-label weighted 3D variance |
+| 10 | Excess XY segregation index |
+| 11 | Mean normalized `Scc` over the three lowest q shells |
+| 12 | q at the strongest resolved `Scc` peak (1/Å) |
+| 13 | `2*pi/q_peak` (Å) |
+| 14 | Normalized `Scc` at the peak |
+| 15 | Peak is in the lowest q shell: `1` yes, `0` no |
+| 16 | Number of PMPS-containing chain clusters |
+| 17 | Chains in the largest cluster |
+| 18 | Fraction of oil chains in the largest cluster |
+| 19 | Unique intermolecular PMPS chain contacts |
+
+For a final data snapshot, columns 1–3 are zero because a LAMMPS data file
+does not preserve a trajectory frame index or production timestep. The
+remaining columns contain the static morphology measurements normally used
+for a frozen system.
+
+`phase_structure_factor` columns:
+
+| Column | Quantity |
+|---:|---|
+| 1 | Zero-based trajectory frame index |
+| 2 | LAMMPS timestep |
+| 3 | Time from first trajectory frame (ns) |
+| 4 | Mean q of the shell (1/Å) |
+| 5 | Number of reciprocal-space modes in the shell |
+| 6 | Mean normalized `Scc` in the shell |
+
+`phase_field_final` columns:
+
+| Column | Quantity |
+|---:|---|
+| 1–3 | Integer voxel indices `ix iy iz` |
+| 4–6 | Voxel-center coordinates `x y z` (Å) |
+| 7 | MPS repeat-marker count |
+| 8 | DMS repeat-marker count |
+| 9 | Total repeat-marker count |
+| 10 | Local MPS repeat fraction |
+
+Empty voxels have zero counts and a reported local fraction of zero. Filter
+column 9 greater than zero before using column 10 in a composition histogram.
+
+MATLAB examples:
+
+```matlab
+metrics = load('phase_metrics.CASE.dat');
+time_ns = metrics(:,3);
+seg3D = metrics(:,7);
+segXY = metrics(:,10);
+lowQ = metrics(:,11);
+largestCluster = metrics(:,18);
+
+figure;
+tiledlayout(3,1);
+nexttile; plot(time_ns, seg3D, time_ns, segXY, 'LineWidth', 1.3);
+legend('3D', 'XY'); ylabel('Segregation index');
+nexttile; plot(time_ns, lowQ, 'LineWidth', 1.3); ylabel('Low-q S_{cc}');
+nexttile; plot(time_ns, largestCluster, 'LineWidth', 1.3);
+ylabel('Largest cluster fraction'); xlabel('Time (ns)');
+```
+
+Plot the final structure factor with:
+
+```matlab
+s = load('phase_structure_factor.CASE.dat');
+lastFrame = max(s(:,1));
+last = s(:,1) == lastFrame;
+plot(s(last,4), s(last,6), 'o-');
+xlabel('q (1/\AA)'); ylabel('Normalized S_{cc}(q)');
+```
+
+Phase separation should not be assigned from a single number. For a final
+snapshot, stronger evidence is the consistent combination of excess local
+segregation, enhanced low-q `Scc`, and a large PMPS-rich chain cluster. These
+measure morphology but cannot by themselves prove equilibrium. When a useful
+trajectory exists, stable time series support a converged morphology; rising
+low-q intensity or cluster fraction indicates continued coarsening.
