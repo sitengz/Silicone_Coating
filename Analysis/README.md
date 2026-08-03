@@ -847,6 +847,14 @@ segregation. For bulk systems, the 3D index is primary.
 
 ### Concentration structure factor
 
+The concentration-fluctuation construction is based on the Bhatia–Thornton
+separation of number-density and concentration modes in a binary mixture
+[[1]](https://doi.org/10.1103/PhysRevB.2.3004). Partial structure factors and
+their interpretation in simulated binary polymer blends are discussed by Cui
+et al. [[2]](https://doi.org/10.1021/ma961020h). The analyzer uses the
+following finite-system normalization so that formulations with different
+numbers of DMS and MPS markers can be compared directly:
+
 The normalized concentration mode is
 
 ```text
@@ -862,6 +870,11 @@ resolved peak gives the preliminary length scale
 domain spacing = 2*pi/q_peak
 ```
 
+This conversion from the primary structure-factor peak, `q_peak`, to a
+real-space spacing follows the usual scattering relation `d = 2*pi/q*`; for
+an example combining that interpretation with coarse-grained molecular
+simulation, see Srivastava et al. [[3]](https://doi.org/10.1038/ncomms14131).
+
 Bulk systems use a radially averaged 3D `Scc(q)`. Films use in-plane
 `Scc(q_xy)` after integrating through z, which isolates lateral domains from
 the average z profile. Species are deposited on the composition grid before
@@ -873,6 +886,12 @@ by the simulation box. In that case `2*pi/q_peak` is a lower bound rather than
 a fully resolved domain diameter.
 
 ### PMPS-chain contact clusters
+
+This contact graph is an operational definition specific to this analyzer,
+not a reproduction of a cluster algorithm from the cited papers. Srivastava
+et al. provide a related example in which coarse-grained molecular models and
+scattering were used together to distinguish discrete aggregates from
+interconnected networks [[3]](https://doi.org/10.1038/ncomms14131).
 
 Two component-3 oil chains are connected when type-4 MPS markers from the two
 different molecules lie within `--contact-cutoff`, using minimum-image
@@ -992,3 +1011,24 @@ segregation, enhanced low-q `Scc`, and a large PMPS-rich chain cluster. These
 measure morphology but cannot by themselves prove equilibrium. When a useful
 trajectory exists, stable time series support a converged morphology; rising
 low-q intensity or cluster fraction indicates continued coarsening.
+
+### References for phase-separation analysis
+
+1. A. B. Bhatia and D. E. Thornton, "Structural Aspects of the Electrical
+   Resistivity of Binary Alloys," *Physical Review B* **2**, 3004–3012
+   (1970). [doi:10.1103/PhysRevB.2.3004](https://doi.org/10.1103/PhysRevB.2.3004)
+2. S. T. Cui, H. D. Cochran, P. T. Cummings, and S. K. Kumar, "Computer
+   Simulations of the Static Scattering from Model Polymer Blends,"
+   *Macromolecules* **30** (11), 3375–3382 (1997).
+   [doi:10.1021/ma961020h](https://doi.org/10.1021/ma961020h)
+3. S. Srivastava, M. Andreev, A. E. Levi, D. J. Goldfeld, J. Mao, W. T.
+   Heller, V. M. Prabhu, J. J. de Pablo, and M. V. Tirrell, "Gel phase
+   formation in dilute triblock copolyelectrolyte complexes," *Nature
+   Communications* **8**, 14131 (2017).
+   [doi:10.1038/ncomms14131](https://doi.org/10.1038/ncomms14131)
+
+References 1–3 support the concentration-mode, polymer-blend scattering, and
+peak-spacing interpretations above. The finite-particle-corrected voxel
+segregation index and the PMPS chain-contact graph are reproducible analysis
+choices introduced for this tool; their definitions and adjustable scales
+are documented explicitly rather than attributed to those publications.
