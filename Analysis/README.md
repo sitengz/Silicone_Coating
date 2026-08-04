@@ -818,6 +818,14 @@ requested grid spacing when comparing formulations.
 
 ### Local segregation index
 
+Spatially resolved composition fields are a standard way to describe local
+segregation in copolymer systems. For example, Lefebvre, Olvera de la Cruz,
+and Shull used composition profiles to characterize segregation and ordered
+lamellar states in gradient-copolymer melts
+[[1]](https://doi.org/10.1021/ma035141a). The finite-particle correction and
+the scalar index below are explicit choices of this analyzer rather than an
+equation reproduced from that paper.
+
 For each voxel, the local MPS repeat fraction is
 
 ```text
@@ -849,9 +857,16 @@ segregation. For bulk systems, the 3D index is primary.
 
 The concentration-fluctuation construction is based on the Bhatia–Thornton
 separation of number-density and concentration modes in a binary mixture
-[[1]](https://doi.org/10.1103/PhysRevB.2.3004). Partial structure factors and
+[[2]](https://doi.org/10.1103/PhysRevB.2.3004). Partial structure factors and
 their interpretation in simulated binary polymer blends are discussed by Cui
-et al. [[2]](https://doi.org/10.1021/ma961020h). The analyzer uses the
+et al. [[3]](https://doi.org/10.1021/ma961020h). Relevant experimental and
+theoretical foundations also include the polymer SAXS review by Chu and Hsiao
+[[4]](https://doi.org/10.1021/cr9900376), the SAXS phase study of a diblock
+copolymer/homopolymer blend by Bodycomb, Yamaguchi, and Hashimoto
+[[5]](https://doi.org/10.1021/ma9917996), and the microscopic polymer-blend
+scattering theory of Schweizer and Curro
+[[6]](https://doi.org/10.1103/PhysRevLett.60.809). These sources support the
+physical interpretation of composition scattering; the analyzer uses the
 following finite-system normalization so that formulations with different
 numbers of DMS and MPS markers can be compared directly:
 
@@ -873,7 +888,7 @@ domain spacing = 2*pi/q_peak
 This conversion from the primary structure-factor peak, `q_peak`, to a
 real-space spacing follows the usual scattering relation `d = 2*pi/q*`; for
 an example combining that interpretation with coarse-grained molecular
-simulation, see Srivastava et al. [[3]](https://doi.org/10.1038/ncomms14131).
+simulation, see Srivastava et al. [[7]](https://doi.org/10.1038/ncomms14131).
 
 Bulk systems use a radially averaged 3D `Scc(q)`. Films use in-plane
 `Scc(q_xy)` after integrating through z, which isolates lateral domains from
@@ -891,7 +906,37 @@ This contact graph is an operational definition specific to this analyzer,
 not a reproduction of a cluster algorithm from the cited papers. Srivastava
 et al. provide a related example in which coarse-grained molecular models and
 scattering were used together to distinguish discrete aggregates from
-interconnected networks [[3]](https://doi.org/10.1038/ncomms14131).
+interconnected networks [[7]](https://doi.org/10.1038/ncomms14131).
+
+This connected-component analysis should not be confused with the graph-theory
+*clustering coefficient*. In the present chain-contact graph, the clustering
+coefficient of chain `i` would be
+
+```text
+C_i = 2*T_i / (k_i*(k_i-1))
+```
+
+where `k_i` is the number of chains contacting chain `i`, and `T_i` is the
+number of contact triangles containing it. It measures local triangle closure:
+whether the neighbors of one chain also contact one another. The current
+analyzer instead measures global connectivity through connected components,
+especially the fraction of chains in the largest component. Thus, a compact
+aggregate may have both a large component and a high clustering coefficient,
+whereas a long connected bundle or network can have a large component but a
+low clustering coefficient.
+
+The clustering coefficient is nevertheless relevant as a possible
+complementary descriptor. Its graph-theory use is associated with
+Watts and Strogatz [[8]](https://doi.org/10.1038/30918). Yang et al. applied
+clustering coefficients and other graph descriptors to molecular-dynamics
+trajectories of liquid-crystal and surfactant systems to distinguish phases
+and phase transitions [[9]](https://doi.org/10.1002/advs.202402464).
+Shillcock et al. used clustering coefficients in dissipative-particle-dynamics
+models of phase-separated biomolecular condensates to quantify dense-phase
+network heterogeneity [[10]](https://doi.org/10.1039/D2SM00387B). These
+studies support adding the coefficient as a supplementary topology metric,
+but it should not replace the largest-cluster fraction, local composition, or
+`Scc(q)` as evidence of DMS/MPS phase separation.
 
 Two component-3 oil chains are connected when type-4 MPS markers from the two
 different molecules lie within `--contact-cutoff`, using minimum-image
@@ -1014,21 +1059,52 @@ low-q intensity or cluster fraction indicates continued coarsening.
 
 ### References for phase-separation analysis
 
-1. A. B. Bhatia and D. E. Thornton, "Structural Aspects of the Electrical
+1. M. D. Lefebvre, M. Olvera de la Cruz, and K. R. Shull, "Phase Segregation
+   in Gradient Copolymer Melts," *Macromolecules* **37** (3), 1118–1123
+   (2004). [doi:10.1021/ma035141a](https://doi.org/10.1021/ma035141a)
+2. A. B. Bhatia and D. E. Thornton, "Structural Aspects of the Electrical
    Resistivity of Binary Alloys," *Physical Review B* **2**, 3004–3012
    (1970). [doi:10.1103/PhysRevB.2.3004](https://doi.org/10.1103/PhysRevB.2.3004)
-2. S. T. Cui, H. D. Cochran, P. T. Cummings, and S. K. Kumar, "Computer
+3. S. T. Cui, H. D. Cochran, P. T. Cummings, and S. K. Kumar, "Computer
    Simulations of the Static Scattering from Model Polymer Blends,"
    *Macromolecules* **30** (11), 3375–3382 (1997).
    [doi:10.1021/ma961020h](https://doi.org/10.1021/ma961020h)
-3. S. Srivastava, M. Andreev, A. E. Levi, D. J. Goldfeld, J. Mao, W. T.
+4. B. Chu and B. S. Hsiao, "Small-Angle X-ray Scattering of Polymers,"
+   *Chemical Reviews* **101** (6), 1727–1762 (2001).
+   [doi:10.1021/cr9900376](https://doi.org/10.1021/cr9900376)
+5. J. Bodycomb, D. Yamaguchi, and T. Hashimoto, "A Small-Angle X-ray
+   Scattering Study of the Phase Behavior of Diblock Copolymer/Homopolymer
+   Blends," *Macromolecules* **33** (14), 5187–5197 (2000).
+   [doi:10.1021/ma9917996](https://doi.org/10.1021/ma9917996)
+6. K. S. Schweizer and J. G. Curro, "Microscopic theory of the structure,
+   thermodynamics, and apparent chi parameter of polymer blends," *Physical
+   Review Letters* **60** (9), 809–812 (1988).
+   [doi:10.1103/PhysRevLett.60.809](https://doi.org/10.1103/PhysRevLett.60.809)
+7. S. Srivastava, M. Andreev, A. E. Levi, D. J. Goldfeld, J. Mao, W. T.
    Heller, V. M. Prabhu, J. J. de Pablo, and M. V. Tirrell, "Gel phase
    formation in dilute triblock copolyelectrolyte complexes," *Nature
    Communications* **8**, 14131 (2017).
    [doi:10.1038/ncomms14131](https://doi.org/10.1038/ncomms14131)
+8. D. J. Watts and S. H. Strogatz, "Collective dynamics of 'small-world'
+   networks," *Nature* **393**, 440–442 (1998).
+   [doi:10.1038/30918](https://doi.org/10.1038/30918)
+9. R. Yang, K. Bernardino, X. Xiao, W. R. Gomes, D. A. Mattoso, N. A. Kotov,
+   P. Bogdan, and A. F. de Moura, "Graph Theoretical Description of Phase
+   Transitions in Complex Multiscale Phases with Supramolecular Assemblies,"
+   *Advanced Science* **11** (33), e2402464 (2024).
+   [doi:10.1002/advs.202402464](https://doi.org/10.1002/advs.202402464)
+10. J. C. Shillcock, C. Lagisquet, J. Alexandre, L. Vuillon, and J. H. Ipsen,
+    "Model biomolecular condensates have heterogeneous structure
+    quantitatively dependent on the interaction profile of their constituent
+    macromolecules," *Soft Matter* **18** (35), 6674–6693 (2022).
+    [doi:10.1039/D2SM00387B](https://doi.org/10.1039/D2SM00387B)
 
-References 1–3 support the concentration-mode, polymer-blend scattering, and
-peak-spacing interpretations above. The finite-particle-corrected voxel
-segregation index and the PMPS chain-contact graph are reproducible analysis
+Reference 1 supports spatial composition profiles as a description of local
+segregation; references 2–6 support the concentration-mode and
+polymer-scattering interpretations; and reference 7 supports the peak-spacing
+and aggregate-network interpretations. References 8–10 motivate the
+clustering coefficient as a possible additional graph descriptor. The
+finite-particle-corrected voxel index and current PMPS chain-contact graph
+remain reproducible analysis
 choices introduced for this tool; their definitions and adjustable scales
 are documented explicitly rather than attributed to those publications.
