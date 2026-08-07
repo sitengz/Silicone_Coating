@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -14,16 +15,38 @@
 #include <string>
 #include <vector>
 
+#include "../Formulation/silicone_oil_component.hpp"
+
+#ifndef SILICONE_FORMULATION_NAME
+#define SILICONE_FORMULATION_NAME "V35"
+#define SILICONE_DEFAULT_N1 384
+#define SILICONE_DEFAULT_M1 306
+#define SILICONE_DEFAULT_FUNCTIONALITY 4
+#define SILICONE_FOLDED_NETWORK 1
+#define SILICONE_CROSSLINK_PROBABILITY 0.5
+#endif
+
 namespace {
 
 constexpr double kAvogadroScale = 0.602; // Converts (g/mol)/(g/cm^3) to A^3.
+constexpr const char* kFormulationName = SILICONE_FORMULATION_NAME;
+constexpr double kOilZLowerFraction = -0.20;
+constexpr double kOilZUpperFraction = 0.20;
+constexpr double kModeratorZLowerFraction = 0.28;
+constexpr double kModeratorZUpperFraction = 0.38;
+constexpr long long kMsdProductionSteps = 1000000;
+constexpr int kMsdDumpEverySteps = 1000;
+constexpr long long kMsdExpectedFrames =
+    kMsdProductionSteps / kMsdDumpEverySteps + 1;
+constexpr double kCrosslinkCreationProbability =
+    SILICONE_CROSSLINK_PROBABILITY;
 
 struct Settings {
-    int n1 = 384, m1 = 306; // Bifunctional network strands.
-    int n2 = 32,  m2 = 153; // Tetrafunctional cross-linkers.
-    int n3 = 32,  m3 = 425; // Neutral linear oil fillers.
+    int n1 = SILICONE_DEFAULT_N1, m1 = SILICONE_DEFAULT_M1;
+    int n2 = 32,  m2 = 0;   // M2 is resolved from stoichiometry.
+    int n3 = 0,   m3 = 0;   // Silicone-oil repeat units and chains.
     int n4 = 5,   m4 = 6;   // Five-bead star-like moderators.
-    int crosslinker_functionality = 4;
+    int crosslinker_functionality = SILICONE_DEFAULT_FUNCTIONALITY;
     std::string crosslink_distribution = "random";
     std::uint32_t crosslink_seed = 20260722u;
     double bead_mass = 74.0;
@@ -33,10 +56,20 @@ struct Settings {
     double spacing = 7.0;
     double thickness = -1.0; // Negative selects the original cubic bulk box.
     std::uint32_t seed = 5489u;
-    std::string output = "data.V35_PDMS_N32_10wt";
+    std::string output = std::string("data.") + kFormulationName + "_no_oil";
     bool output_explicit = false;
-    bool filler_length_explicit = false;
-    double filler_weight_percent = -1.0;
+    std::string oil = "none";
+    bool oil_explicit = false;
+    bool oil_length_explicit = false;
+    bool oil_weight_explicit = false;
+    double oil_weight_percent = -1.0;
+    double mps_monomer_percent = -1.0;
+    double mps_weight_percent = -1.0;
+    bool sequence_explicit = false;
+    std::string sequence = "random";
+    int mps_per_chain = 0;
+    std::uint32_t oil_seed = 20260727u;
+    double oil_minimum_separation = 4.5;
 };
 
 struct Atom { int id, molecule, type; double charge, x, y, z; };
@@ -65,14 +98,23 @@ double parse_double(const std::string& value, const std::string& option) {
 void print_help(const char* program) {
     std::cout
         << "Usage: " << program << " [options]\n\n"
-        << "V35 LAMMPS data-file generator. N is beads per molecule; M is molecule count.\n\n"
-        << "  --n1 N --m1 M    bifunctional network strands (defaults: 384, 306)\n"
+        << kFormulationName << " four-component formulation generator.\n"
+        << "The default contains no component-3 silicone oil.\n\n"
+        << "  --n1 N --m1 M    bifunctional network strands\n"
         << "  --n2 N           cross-linker length (default: 32); M2 is stoichiometric\n"
-        << "  --n3 N --m3 M    neutral linear oil fillers (defaults: 32, 425)\n"
         << "  --n4 N --m4 M    star-moderator size/count (N4 must be 5; defaults: 5, 6)\n"
-        << "  --filler-length N  PDMS filler chain length (alias for --n3)\n"
-        << "  --filler-wt X      PDMS weight percent; computes M3 from fixed V35 base\n"
-        << "  --functionality F cross-linker reactive sites, 3-16 (default: 4)\n"
+        << "\nExplicit component-3 oil selection:\n"
+        << "  --oil TYPE        pdms, pmps, or copolymer; omit for no oil\n"
+        << "  --oil-length N    repeat units per oil chain; required with --oil\n"
+        << "  --oil-wt X        oil weight percent of complete formulation; required\n"
+        << "  --mps-percent X   MPS repeat-unit percentage for copolymer oil\n"
+        << "  --mps-wt X        MPS repeat-unit weight percentage for copolymer oil\n"
+        << "  --sequence MODE   random, alternating, or block (default: random)\n"
+        << "  --oil-seed N      oil sequence/conformation/packing seed (default: 20260727)\n"
+        << "  --oil-min-separation X  minimum oil/moderator-to-other distance in A"
+           " (default: 4.5)\n"
+        << "\nNetwork and box controls:\n"
+        << "  --functionality F cross-linker reactive sites, 3-16\n"
         << "  --crosslink-distribution MODE\n"
         << "                     reactive-site placement: regular or random (default: random)\n"
         << "  --crosslink-seed N random-site seed (default: 20260722)\n"
@@ -84,7 +126,7 @@ void print_help(const char* program) {
         << "  --thickness X     fixed film thickness Lz in angstrom; omit for bulk\n"
         << "  --seed N          reproducible random seed (default: 5489)\n"
         << "  --output FILE     override the automatically generated data filename\n"
-        << "                    companion input, submit, and .info files share its directory\n"
+        << "                    a case folder is created beside this path\n"
         << "  --help             show this help\n";
 }
 
@@ -100,10 +142,33 @@ Settings parse_args(int argc, char** argv) {
         else if (option == "--n2") s.n2 = parse_int(value, option);
         else if (option == "--m2")
             throw std::runtime_error("M2 is determined by M2=2*M1/functionality; do not supply --m2");
-        else if (option == "--n3") s.n3 = parse_int(value, option);
-        else if (option == "--m3") s.m3 = parse_int(value, option);
+        else if (option == "--n3" || option == "--m3" ||
+                 option == "--filler-length" || option == "--filler-wt")
+            throw std::runtime_error(
+                option + " is obsolete; use --oil, --oil-length, and --oil-wt");
         else if (option == "--n4") s.n4 = parse_int(value, option);
         else if (option == "--m4") s.m4 = parse_int(value, option);
+        else if (option == "--oil") { s.oil = value; s.oil_explicit = true; }
+        else if (option == "--oil-length") {
+            s.n3 = parse_int(value, option);
+            s.oil_length_explicit = true;
+        }
+        else if (option == "--oil-wt") {
+            s.oil_weight_percent = parse_double(value, option);
+            s.oil_weight_explicit = true;
+        }
+        else if (option == "--mps-percent")
+            s.mps_monomer_percent = parse_double(value, option);
+        else if (option == "--mps-wt")
+            s.mps_weight_percent = parse_double(value, option);
+        else if (option == "--sequence") {
+            s.sequence = value;
+            s.sequence_explicit = true;
+        }
+        else if (option == "--oil-seed")
+            s.oil_seed = static_cast<std::uint32_t>(parse_int(value, option));
+        else if (option == "--oil-min-separation")
+            s.oil_minimum_separation = parse_double(value, option);
         else if (option == "--functionality") s.crosslinker_functionality = parse_int(value, option);
         else if (option == "--crosslink-distribution") s.crosslink_distribution = value;
         else if (option == "--crosslink-seed") s.crosslink_seed = static_cast<std::uint32_t>(parse_int(value, option));
@@ -115,8 +180,6 @@ Settings parse_args(int argc, char** argv) {
         else if (option == "--thickness") s.thickness = parse_double(value, option);
         else if (option == "--seed") s.seed = static_cast<std::uint32_t>(parse_int(value, option));
         else if (option == "--output") { s.output = value; s.output_explicit = true; }
-        else if (option == "--filler-length") { s.n3 = parse_int(value, option); s.filler_length_explicit = true; }
-        else if (option == "--filler-wt") s.filler_weight_percent = parse_double(value, option);
         else throw std::runtime_error("Unknown option: " + option);
     }
     return s;
@@ -132,28 +195,107 @@ std::string filename_number(double value) {
     return result;
 }
 
-void apply_filler_composition(Settings& s) {
-    if (s.filler_length_explicit && s.filler_weight_percent < 0.0)
-        s.filler_weight_percent = 10.0;
-    if (s.filler_weight_percent < 0.0) return;
-    if (s.filler_weight_percent >= 100.0)
-        throw std::runtime_error("--filler-wt must be at least 0 and less than 100");
-    if (s.n3 <= 0 && s.filler_weight_percent > 0.0)
-        throw std::runtime_error("A positive --filler-wt requires a positive --filler-length");
+double oil_chain_mass(const Settings& s) {
+    return silicone_oil::chain_mass(s.n3, s.mps_per_chain, s.bead_mass);
+}
 
-    // Components 1, 2, and 4 form the fixed V35 base. With equal bead masses,
-    // w = filler_beads / (base_beads + filler_beads).
-    const long long base_beads = 1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + 1LL*s.n4*s.m4;
-    if (base_beads <= 0) throw std::runtime_error("The fixed V35 base must contain at least one bead");
-    if (s.filler_weight_percent == 0.0) {
+long long oil_beads(const Settings& s) {
+    return 1LL * s.m3 * (s.n3 + s.mps_per_chain);
+}
+
+std::string oil_name(const Settings& s) {
+    if (s.oil == "pdms") return "PDMS";
+    if (s.oil == "pmps") return "PMPS";
+    if (s.oil == "copolymer") return "Copolymer";
+    return "no_oil";
+}
+
+void resolve_oil_composition(Settings& s) {
+    const bool has_oil_control =
+        s.oil_length_explicit || s.oil_weight_explicit ||
+        s.mps_monomer_percent >= 0.0 || s.mps_weight_percent >= 0.0 ||
+        s.sequence_explicit;
+    if (!s.oil_explicit) {
+        if (has_oil_control)
+            throw std::runtime_error(
+                "Oil controls require an explicit --oil pdms, pmps, or copolymer");
+        s.oil = "none";
+        s.n3 = 0;
         s.m3 = 0;
-    } else {
-        const double fraction = s.filler_weight_percent / 100.0;
-        const double desired_filler_beads = base_beads * fraction / (1.0 - fraction);
-        s.m3 = std::max(1, static_cast<int>(std::lround(desired_filler_beads / s.n3)));
+        s.mps_per_chain = 0;
+        if (!s.output_explicit)
+            s.output = std::string("data.") + kFormulationName + "_no_oil";
+        return;
     }
-    if (!s.output_explicit)
-        s.output = "data.V35_PDMS_N" + std::to_string(s.n3) + "_" + filename_number(s.filler_weight_percent) + "wt";
+    if (s.oil != "pdms" && s.oil != "pmps" && s.oil != "copolymer")
+        throw std::runtime_error("--oil must be pdms, pmps, or copolymer");
+    if (!s.oil_length_explicit || !s.oil_weight_explicit)
+        throw std::runtime_error(
+            "--oil requires both --oil-length and --oil-wt");
+    if (s.n3 <= 0)
+        throw std::runtime_error("--oil-length must be positive");
+    if (s.oil_weight_percent <= 0.0 || s.oil_weight_percent >= 100.0)
+        throw std::runtime_error("--oil-wt must be greater than 0 and less than 100");
+    if (s.oil_minimum_separation <= 0.0 ||
+        s.oil_minimum_separation >= 15.0)
+        throw std::runtime_error("--oil-min-separation must be greater than 0 and less than 15 A");
+    if (s.sequence != "random" && s.sequence != "alternating" &&
+        s.sequence != "block")
+        throw std::runtime_error("--sequence must be random, alternating, or block");
+    if (s.mps_monomer_percent >= 0.0 && s.mps_weight_percent >= 0.0)
+        throw std::runtime_error("--mps-percent and --mps-wt are mutually exclusive");
+
+    if (s.oil == "pdms" || s.oil == "pmps") {
+        if (s.mps_monomer_percent >= 0.0 || s.mps_weight_percent >= 0.0 ||
+            s.sequence_explicit)
+            throw std::runtime_error(
+                "MPS composition and sequence options are only valid with --oil copolymer");
+        s.mps_per_chain = s.oil == "pdms" ? 0 : s.n3;
+    } else {
+        if (s.mps_monomer_percent < 0.0 && s.mps_weight_percent < 0.0)
+            throw std::runtime_error(
+                "--oil copolymer requires --mps-percent or --mps-wt");
+        double requested_mps = 0.0;
+        if (s.mps_weight_percent >= 0.0) {
+            if (s.mps_weight_percent <= 0.0 || s.mps_weight_percent >= 100.0)
+                throw std::runtime_error("--mps-wt must be greater than 0 and less than 100");
+            const double fraction = s.mps_weight_percent / 100.0;
+            const double denominator =
+                silicone_oil::kMpsRepeatMass * (1.0 - fraction) +
+                fraction * s.bead_mass;
+            requested_mps =
+                fraction * s.n3 * s.bead_mass / denominator;
+        } else {
+            if (s.mps_monomer_percent <= 0.0 ||
+                s.mps_monomer_percent >= 100.0)
+                throw std::runtime_error(
+                    "--mps-percent must be greater than 0 and less than 100");
+            requested_mps =
+                s.n3 * s.mps_monomer_percent / 100.0;
+        }
+        s.mps_per_chain = std::max(
+            1, std::min(s.n3 - 1, static_cast<int>(std::lround(requested_mps))));
+        if (s.n3 < 2)
+            throw std::runtime_error("Copolymer oil requires --oil-length of at least 2");
+    }
+
+    const long long base_beads =
+        1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + 1LL*s.n4*s.m4;
+    const double base_mass = base_beads * s.bead_mass;
+    const double fraction = s.oil_weight_percent / 100.0;
+    const double desired_oil_mass = base_mass * fraction / (1.0 - fraction);
+    s.m3 = std::max(
+        1, static_cast<int>(std::lround(desired_oil_mass / oil_chain_mass(s))));
+
+    if (!s.output_explicit) {
+        s.output = std::string("data.") + kFormulationName + '_' +
+            oil_name(s) + "_N" + std::to_string(s.n3);
+        if (s.oil == "copolymer") {
+            s.output += "_MPS" + std::to_string(s.mps_per_chain) + "of" +
+                        std::to_string(s.n3) + '_' + s.sequence;
+        }
+        s.output += "_" + filename_number(s.oil_weight_percent) + "wt";
+    }
 }
 
 void apply_crosslinker_stoichiometry(Settings& s) {
@@ -180,23 +322,44 @@ void apply_geometry_filename(Settings& s) {
 void report_composition(const Settings& s) {
     const int n[] = {s.n1, s.n2, s.n3, s.n4};
     const int m[] = {s.m1, s.m2, s.m3, s.m4};
+    const long long component_beads[] = {
+        1LL*s.n1*s.m1,
+        1LL*s.n2*s.m2,
+        oil_beads(s),
+        1LL*s.n4*s.m4
+    };
+    const double component_masses[] = {
+        component_beads[0] * s.bead_mass,
+        component_beads[1] * s.bead_mass,
+        s.m3 * oil_chain_mass(s),
+        component_beads[3] * s.bead_mass
+    };
     long long total_beads = 0;
     long long total_molecules = 0;
-    for (size_t i = 0; i < 4; ++i) total_beads += 1LL * n[i] * m[i];
-    for (int count : m) total_molecules += count;
-    std::cerr << "Composition (equal bead masses):\n";
+    double total_mass = 0.0;
     for (size_t i = 0; i < 4; ++i) {
-        const long long component_beads = 1LL * n[i] * m[i];
-        const double realized = total_beads == 0 ? 0.0 : 100.0 * component_beads / total_beads;
+        total_beads += component_beads[i];
+        total_mass += component_masses[i];
+    }
+    for (int count : m) total_molecules += count;
+    std::cerr << "Composition:\n";
+    for (size_t i = 0; i < 4; ++i) {
+        const double realized = total_mass == 0.0
+            ? 0.0 : 100.0 * component_masses[i] / total_mass;
         const double mole_fraction = total_molecules == 0 ? 0.0 : 100.0 * m[i] / total_molecules;
         std::cerr << "  component " << i + 1 << ": N=" << n[i] << ", M=" << m[i]
+                  << ", beads=" << component_beads[i]
                   << ", mole%=" << std::fixed << std::setprecision(4) << mole_fraction
                   << ", realized wt%=" << realized;
-        if (i == 2 && s.filler_weight_percent >= 0.0)
-            std::cerr << ", requested filler wt%=" << s.filler_weight_percent;
+        if (i == 2 && s.oil != "none")
+            std::cerr << ", oil=" << s.oil
+                      << ", DMS/MPS repeats=" << s.n3 - s.mps_per_chain
+                      << '/' << s.mps_per_chain
+                      << ", requested oil wt%=" << s.oil_weight_percent;
         std::cerr << '\n';
     }
-    std::cerr << "  total beads=" << total_beads << '\n';
+    std::cerr << "  total beads=" << total_beads
+              << ", total mass=" << total_mass << " g/mol-equivalent\n";
 }
 
 void validate(const Settings& s) {
@@ -216,7 +379,8 @@ void validate(const Settings& s) {
         throw std::runtime_error("Mass, densities, bond length, and spacing must be positive");
     if (s.thickness == 0.0)
         throw std::runtime_error("--thickness must be positive; omit it for the cubic bulk system");
-    const long long total_beads = 1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + 1LL*s.n3*s.m3 + 1LL*s.n4*s.m4;
+    const long long total_beads =
+        1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + oil_beads(s) + 1LL*s.n4*s.m4;
     if (total_beads <= 0) throw std::runtime_error("The formulation must contain at least one bead");
     if (s.output.empty()) throw std::runtime_error("Output filename cannot be empty");
 }
@@ -250,7 +414,7 @@ void add_linear_topology(System& sys, int first_atom, int bead_count) {
         sys.dihedrals.push_back({static_cast<int>(sys.dihedrals.size()) + 1, 1, first_atom + i, first_atom + i + 1, first_atom + i + 2, first_atom + i + 3});
 }
 
-
+#if SILICONE_FOLDED_NETWORK
 struct PathPoint { double x, y; };
 
 std::vector<PathPoint> folded_strand_path(int bead_count, const Box& box,
@@ -343,6 +507,7 @@ void add_network_strands(System& sys, const Settings& s, const Box& box) {
         add_linear_topology(sys, first_atom, s.n1);
     }
 }
+#endif
 
 void add_linear_component(System& sys, int bead_count, int molecule_count, int component,
                           const Box& box, double bond_length, double spacing,
@@ -394,44 +559,162 @@ void add_linear_component(System& sys, int bead_count, int molecule_count, int c
     }
 }
 
-void add_star_moderators(System& sys, const Settings& s, const Box& box, std::mt19937& rng) {
+double minimum_image(double delta, double length) {
+    return delta - std::round(delta / length) * length;
+}
+
+bool overlaps_existing(const std::vector<silicone_oil::Vec3>& candidate,
+                       const System& sys, const Box& box,
+                       double minimum_separation, bool periodic_z) {
+    const double minimum_squared = minimum_separation * minimum_separation;
+    for (const silicone_oil::Vec3& position : candidate) {
+        for (const Atom& atom : sys.atoms) {
+            double dx = minimum_image(position.x - atom.x, box.lx);
+            double dy = minimum_image(position.y - atom.y, box.ly);
+            double dz = position.z - atom.z;
+            if (periodic_z) dz = minimum_image(dz, box.lz);
+            if (dx*dx + dy*dy + dz*dz < minimum_squared)
+                return true;
+        }
+    }
+    return false;
+}
+
+void add_star_moderators(System& sys, const Settings& s, const Box& box,
+                         std::mt19937& rng) {
     const double margin = s.bond_length;
     if (box.lx <= 2.0*margin || box.ly <= 2.0*margin)
         throw std::runtime_error("Lateral box dimensions are too small for a star moderator");
     std::uniform_real_distribution<double> xdist(-box.lx/2 + margin, box.lx/2 - margin);
     std::uniform_real_distribution<double> ydist(-box.ly/2 + margin, box.ly/2 - margin);
-    std::uniform_real_distribution<double> zdist(0.02 * box.lz, 0.12 * box.lz); // Preserves V35's original slab.
+    std::uniform_real_distribution<double> zdist(
+        kModeratorZLowerFraction * box.lz,
+        kModeratorZUpperFraction * box.lz);
     for (int i = 0; i < s.m4; ++i) {
+        std::vector<silicone_oil::Vec3> candidate;
+        bool accepted = false;
+        for (int attempt = 0; attempt < 10000 && !accepted; ++attempt) {
+            const double x = xdist(rng);
+            const double y = ydist(rng);
+            const double z = zdist(rng);
+            const double b = s.bond_length;
+            candidate = {
+                {x,     y,     z},
+                {x + b, y,     z},
+                {x - b, y,     z},
+                {x,     y + b, z},
+                {x,     y - b, z}
+            };
+            accepted = !overlaps_existing(
+                candidate, sys, box, s.oil_minimum_separation,
+                s.thickness <= 0.0);
+        }
+        if (!accepted) {
+            std::ostringstream message;
+            message << "Could not place moderator " << i + 1
+                    << " without overlap in the upper-middle z region. "
+                       "Reduce the minimum separation, component loading, "
+                       "or initial density.";
+            throw std::runtime_error(message.str());
+        }
+
         const int molecule_id = static_cast<int>(sys.atoms.empty() ? 1 : sys.atoms.back().molecule + 1);
         const int center = static_cast<int>(sys.atoms.size()) + 1;
-        const double x = xdist(rng), y = ydist(rng), z = zdist(rng), b = s.bond_length;
         // Preserve the legacy force-field mapping: ordinary center, type-2 arms.
-        sys.atoms.push_back({center,     molecule_id, 1, 0.0, x,     y,     z});
-        sys.atoms.push_back({center + 1, molecule_id, 2, 0.0, x + b, y,     z});
-        sys.atoms.push_back({center + 2, molecule_id, 2, 0.0, x - b, y,     z});
-        sys.atoms.push_back({center + 3, molecule_id, 2, 0.0, x,     y + b, z});
-        sys.atoms.push_back({center + 4, molecule_id, 2, 0.0, x,     y - b, z});
+        for (std::size_t bead = 0; bead < candidate.size(); ++bead) {
+            const silicone_oil::Vec3& position = candidate[bead];
+            sys.atoms.push_back({
+                center + static_cast<int>(bead),
+                molecule_id,
+                bead == 0 ? 1 : 2,
+                0.0,
+                position.x,
+                position.y,
+                position.z
+            });
+        }
         for (int arm = 1; arm <= 4; ++arm)
-            sys.bonds.push_back({static_cast<int>(sys.bonds.size()) + 1, 2, center, center + arm});
+            sys.bonds.push_back({static_cast<int>(sys.bonds.size()) + 1, 1, center, center + arm});
         for (int a = 1; a <= 4; ++a)
             for (int c = a + 1; c <= 4; ++c)
                 sys.angles.push_back({static_cast<int>(sys.angles.size()) + 1, 1, center + a, center, center + c});
     }
 }
 
+void add_silicone_oil(System& sys, const Settings& s, const Box& box) {
+    if (s.m3 == 0) return;
+    std::vector<silicone_oil::Vec3> existing;
+    existing.reserve(sys.atoms.size());
+    for (const Atom& atom : sys.atoms)
+        existing.push_back({atom.x, atom.y, atom.z});
+
+    silicone_oil::Settings oil;
+    oil.length = s.n3;
+    oil.chains = s.m3;
+    oil.mps_per_chain = s.mps_per_chain;
+    oil.sequence = s.sequence;
+    oil.seed = s.oil_seed;
+    oil.minimum_separation = s.oil_minimum_separation;
+    oil.z_lower_fraction = kOilZLowerFraction;
+    oil.z_upper_fraction = kOilZUpperFraction;
+    const silicone_oil::Box oil_box{
+        box.lx, box.ly, box.lz, s.thickness <= 0.0
+    };
+    const silicone_oil::Component generated =
+        silicone_oil::generate(oil, oil_box, existing);
+
+    const int atom_offset = static_cast<int>(sys.atoms.size());
+    const int molecule_offset =
+        sys.atoms.empty() ? 0 : sys.atoms.back().molecule;
+    for (const silicone_oil::Atom& atom : generated.atoms) {
+        sys.atoms.push_back({
+            static_cast<int>(sys.atoms.size()) + 1,
+            molecule_offset + atom.molecule,
+            atom.type,
+            0.0,
+            atom.position.x,
+            atom.position.y,
+            atom.position.z
+        });
+    }
+    for (const silicone_oil::Bond& bond : generated.bonds)
+        sys.bonds.push_back({
+            static_cast<int>(sys.bonds.size()) + 1, bond.type,
+            atom_offset + bond.a, atom_offset + bond.b
+        });
+    for (const silicone_oil::Angle& angle : generated.angles)
+        sys.angles.push_back({
+            static_cast<int>(sys.angles.size()) + 1, angle.type,
+            atom_offset + angle.a, atom_offset + angle.b,
+            atom_offset + angle.c
+        });
+    for (const silicone_oil::Dihedral& dihedral : generated.dihedrals)
+        sys.dihedrals.push_back({
+            static_cast<int>(sys.dihedrals.size()) + 1, dihedral.type,
+            atom_offset + dihedral.a, atom_offset + dihedral.b,
+            atom_offset + dihedral.c, atom_offset + dihedral.d
+        });
+}
+
 System build_system(const Settings& s, const Box& box) {
     System sys;
-    const long long expected_atoms = 1LL * s.n1*s.m1 + 1LL * s.n2*s.m2 + 1LL * s.n3*s.m3 + 1LL * s.n4*s.m4;
+    const long long expected_atoms =
+        1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + oil_beads(s) + 1LL*s.n4*s.m4;
     if (expected_atoms > 100000000LL) throw std::runtime_error("Requested system is too large");
     sys.atoms.reserve(static_cast<size_t>(expected_atoms));
+#if SILICONE_FOLDED_NETWORK
     add_network_strands(sys, s, box);
+#else
+    add_linear_component(
+        sys, s.n1, s.m1, 1, box, s.bond_length, s.spacing);
+#endif
     const std::set<int> reactive_sites = crosslinker_sites(s);
     std::cerr << "Cross-linker type-3 sites (" << s.crosslink_distribution << "):";
     for (int site : reactive_sites) std::cerr << ' ' << site;
     std::cerr << '\n';
     add_linear_component(sys, s.n2, s.m2, 2, box, s.bond_length, s.spacing,
                          reactive_sites);
-    add_linear_component(sys, s.n3, s.m3, 3, box, s.bond_length, s.spacing);
+    add_silicone_oil(sys, s, box);
     std::mt19937 rng(s.seed);
     add_star_moderators(sys, s, box, rng);
     if (static_cast<long long>(sys.atoms.size()) != expected_atoms)
@@ -439,20 +722,26 @@ System build_system(const Settings& s, const Box& box) {
     return sys;
 }
 
-void write_data(const Settings& s, const System& sys, const Box& box) {
-    std::ofstream out(s.output);
-    if (!out) throw std::runtime_error("Cannot open output file: " + s.output);
-    out << "LAMMPS data file for the V35 four-component formulation\n\n"
-        << sys.atoms.size() << " atoms\n4 atom types\n"
-        << sys.bonds.size() << " bonds\n2 bond types\n"
-        << sys.angles.size() << " angles\n1 angle types\n"
-        << sys.dihedrals.size() << " dihedrals\n1 dihedral types\n\n"
+void write_data(const Settings& s, const System& sys, const Box& box,
+                const std::string& output_path) {
+    std::ofstream out(output_path);
+    if (!out) throw std::runtime_error("Cannot open output file: " + output_path);
+    out << "LAMMPS data file for the " << kFormulationName
+        << " formulation with explicit silicone-oil namespace\n\n"
+        << sys.atoms.size() << " atoms\n5 atom types\n"
+        << sys.bonds.size() << " bonds\n4 bond types\n"
+        << sys.angles.size() << " angles\n3 angle types\n"
+        << sys.dihedrals.size() << " dihedrals\n4 dihedral types\n\n"
         << std::fixed << std::setprecision(6)
         << -box.lx/2 << ' ' << box.lx/2 << " xlo xhi\n"
         << -box.ly/2 << ' ' << box.ly/2 << " ylo yhi\n"
         << -box.lz/2 << ' ' << box.lz/2 << " zlo zhi\n\nMasses\n\n";
-    for (int type = 1; type <= 4; ++type) out << type << ' ' << s.bead_mass << '\n';
-    out << "\nAtoms # full\n\n" << std::setprecision(3);
+    out << "1 " << s.bead_mass << '\n'
+        << "2 " << s.bead_mass << '\n'
+        << "3 " << s.bead_mass << '\n'
+        << "4 " << silicone_oil::kMpsBackboneMass << '\n'
+        << "5 " << silicone_oil::kMpsPendantMass << '\n';
+    out << "\nAtoms # full\n\n" << std::setprecision(8);
     for (const auto& a : sys.atoms)
         out << a.id << ' ' << a.molecule << ' ' << a.type << ' ' << a.charge << ' '
             << a.x << ' ' << a.y << ' ' << a.z << '\n';
@@ -468,10 +757,11 @@ void write_data(const Settings& s, const System& sys, const Box& box) {
         out << "\nDihedrals\n\n";
         for (const auto& d : sys.dihedrals) out << d.id << ' ' << d.type << ' ' << d.a << ' ' << d.b << ' ' << d.c << ' ' << d.d << '\n';
     }
-    if (!out) throw std::runtime_error("Failed while writing output file: " + s.output);
+    if (!out) throw std::runtime_error("Failed while writing output file: " + output_path);
 }
 
 struct OutputFiles {
+    std::string directory;
     std::string data;
     std::string data_basename;
     std::string input;
@@ -489,34 +779,37 @@ struct LjParameters {
     double cutoff;
 };
 
-std::string basename_of(const std::string& path) {
-    const size_t slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
-std::string directory_of(const std::string& path) {
-    const size_t slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? "" : path.substr(0, slash + 1);
-}
-
 OutputFiles output_files(const Settings& s) {
     OutputFiles files;
-    files.data = s.output;
-    files.data_basename = basename_of(s.output);
+    const std::filesystem::path requested_data(s.output);
+    files.data_basename = requested_data.filename().string();
     if (files.data_basename.empty())
         throw std::runtime_error("Output filename cannot end with a directory separator");
     files.case_name = files.data_basename.rfind("data.", 0) == 0
         ? files.data_basename.substr(5) : files.data_basename;
-    if (files.case_name.empty())
+    if (files.case_name.empty() || files.case_name == "." || files.case_name == "..")
         throw std::runtime_error("Cannot derive a case name from the output filename");
-    const std::string directory = directory_of(s.output);
+
+    const std::filesystem::path directory =
+        requested_data.parent_path() / files.case_name;
+    files.directory = directory.string();
     files.input_basename = "in." + files.case_name;
     files.submit_basename = "submit." + files.case_name + ".sh";
     files.info_basename = files.case_name + ".info";
-    files.input = directory + files.input_basename;
-    files.submit = directory + files.submit_basename;
-    files.info = directory + files.info_basename;
+    files.data = (directory / files.data_basename).string();
+    files.input = (directory / files.input_basename).string();
+    files.submit = (directory / files.submit_basename).string();
+    files.info = (directory / files.info_basename).string();
     return files;
+}
+
+void create_output_directory(const OutputFiles& files) {
+    std::error_code error;
+    std::filesystem::create_directories(files.directory, error);
+    if (error)
+        throw std::runtime_error(
+            "Cannot create output directory " + files.directory + ": " +
+            error.message());
 }
 
 LjParameters lj_parameters(double temperature) {
@@ -535,7 +828,7 @@ std::string sanitize_job_name(const std::string& value) {
         result.push_back(std::isalnum(uc) || c == '_' || c == '-' ? c : '_');
     }
     if (result.size() > 100) result.resize(100);
-    return result.empty() ? "V35" : result;
+    return result.empty() ? kFormulationName : result;
 }
 
 std::string shell_single_quote(const std::string& value) {
@@ -580,18 +873,21 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         : std::cbrt(s.density / s.target_density);
     const LjParameters hot = lj_parameters(800.0);
     const LjParameters cold = lj_parameters(300.0);
+    const double hot_global_cutoff =
+        silicone_oil::maximum_repulsive_cutoff(800.0);
     const std::string suffix = files.case_name;
 
-    out << "# Generated by the V35 model generator\n"
+    out << "# Generated by the " << kFormulationName << " model generator\n"
         << "# Geometry: " << (film ? "film with fixed Lz" : "periodic bulk") << "\n\n"
         << "units           real\n"
         << "boundary        p p " << (film ? "f" : "p") << "\n"
         << "atom_style      full\n"
         << "bond_style      harmonic\n"
-        << "angle_style     harmonic\n"
+        << "angle_style     hybrid harmonic quartic\n"
         << "dihedral_style  nharmonic\n"
+        << "special_bonds   lj 0 0 0.5\n"
         << std::fixed << std::setprecision(8)
-        << "pair_style      lj/cut " << hot.cutoff << "\n"
+        << "pair_style      lj/cut " << hot_global_cutoff << "\n"
         << "comm_modify     cutoff 15\n"
         << "read_data       " << files.data_basename
         << " extra/bond/per/atom 4 extra/angle/per/atom 10"
@@ -599,13 +895,22 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         << "mass            1 " << s.bead_mass << "\n"
         << "mass            2 " << s.bead_mass << "\n"
         << "mass            3 " << s.bead_mass << "\n"
-        << "mass            4 " << s.bead_mass << "\n\n"
+        << "mass            4 " << silicone_oil::kMpsBackboneMass << "\n"
+        << "mass            5 " << silicone_oil::kMpsPendantMass << "\n\n"
         << "bond_coeff      1 115.4086 2.801\n"
         << "bond_coeff      2 115.4086 7.235\n"
-        << "angle_coeff     1 64.62431 111.623\n"
-        << "dihedral_coeff  1 4 3.280141429 -0.59019769 1.991530534 3.31026047\n\n"
-        << "# Calibrated 800 K repulsive pair interaction\n"
-        << "pair_coeff      * * " << hot.epsilon << ' ' << hot.sigma << "\n\n"
+        << "bond_coeff      3 108.3835 2.8039\n"
+        << "bond_coeff      4 232.8302 3.12497\n"
+        << "angle_coeff     1 harmonic 64.62431 111.623\n"
+        << "angle_coeff     2 quartic 110.566 64.3974 -139.5241 80.974\n"
+        << "angle_coeff     3 quartic 110.746 -20.8906 23.3707 180.3228\n"
+        << "dihedral_coeff  1 4 3.280141429 -0.59019769 1.991530534 3.31026047\n"
+        << "dihedral_coeff  2 8 1.3730 0.2686 0.4017 -1.7250 -0.7052 4.1390 0.2327 -2.2635\n"
+        << "dihedral_coeff  3 8 2.3494 -1.5840 -1.6463 3.2133 4.1479 -2.8795 -2.2665 1.1811\n"
+        << "dihedral_coeff  4 8 2.23125 0.24735 2.4327 -2.8832 -4.7124 7.17825 2.33495 -3.74\n\n"
+        << "# Explicit 800 K repulsive pair matrix\n";
+    silicone_oil::write_pair_matrix(out, 800.0, true);
+    out << "\n"
         << "neighbor        2 bin\n"
         << "neigh_modify    delay 5 every 1\n"
         << "timestep        5\n"
@@ -618,8 +923,10 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         << "dump_modify     traj format line \"%d %d %d %.1f %.3f %.3f %.3f %d %d %d\" sort id\n\n";
 
     if (film) {
-        out << "# Repulsive walls follow the fixed lower and upper z box edges.\n"
-            << "fix             zwalls all wall/lj126 zlo EDGE zhi EDGE "
+        out << "# Separate repulsive fixes for the lower and upper z box edges.\n"
+            << "fix             zlo_wall all wall/lj126 zlo EDGE "
+            << hot.epsilon << ' ' << hot.sigma << ' ' << hot.cutoff << " units box\n"
+            << "fix             zhi_wall all wall/lj126 zhi EDGE "
             << hot.epsilon << ' ' << hot.sigma << ' ' << hot.cutoff << " units box\n\n";
     }
 
@@ -633,7 +940,8 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         out << "# Lateral compression with crosslinking at fixed film thickness\n"
             << "fix             integrate all nvt temp 800.0 800.0 50.0\n"
             << "fix             xlink all bond/create 1 2 3 " << hot.cutoff
-            << " 2 iparam 1 1 jparam 1 1 prob 0.1 348154\n"
+            << " 2 iparam 1 1 jparam 1 1 prob "
+            << kCrosslinkCreationProbability << " 348154\n"
             << "thermo_style    custom step temp density etotal epair ebond eangle"
             << " edihed f_xlink[1] f_xlink[2] bonds\n"
             << "fix             compress all deform 1 x scale " << compression_scale
@@ -650,7 +958,8 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
         out << "# Isotropic compression with crosslinking at 800 K\n"
             << "fix             integrate all nvt temp 800.0 800.0 50.0\n"
             << "fix             xlink all bond/create 1 2 3 " << hot.cutoff
-            << " 2 iparam 1 1 jparam 1 1 prob 0.1 348154\n"
+            << " 2 iparam 1 1 jparam 1 1 prob "
+            << kCrosslinkCreationProbability << " 348154\n"
             << "thermo_style    custom step temp density etotal epair ebond eangle"
             << " edihed f_xlink[1] f_xlink[2] bonds\n"
             << "fix             compress all deform 1 x scale " << compression_scale
@@ -666,15 +975,21 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
             << "unfix           xlink\n";
     }
 
-    out << "write_data      data." << suffix << ".xlink_800 nocoeff\n\n"
+    out << "thermo_style    custom step temp density lx ly lz pxx pyy pzz"
+        << " etotal epair ebond eangle edihed\n\n"
+        << "write_data      data." << suffix << ".xlink_800 nocoeff\n\n"
         << "# Restore the reacted-bond equilibrium length and 300 K pair interaction\n"
         << "bond_coeff      2 115.4086 2.801\n"
-        << "pair_style      lj/gromacs 12 15\n"
-        << "pair_coeff      * * " << cold.epsilon << ' ' << cold.sigma << "\n";
+        << "pair_style      lj/gromacs 12 15\n";
+    silicone_oil::write_pair_matrix(out, 300.0, false);
+    out << "\n";
 
     if (film) {
-        out << "unfix           zwalls\n"
-            << "fix             zwalls all wall/lj126 zlo EDGE zhi EDGE "
+        out << "unfix           zlo_wall\n"
+            << "unfix           zhi_wall\n"
+            << "fix             zlo_wall all wall/lj126 zlo EDGE "
+            << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n"
+            << "fix             zhi_wall all wall/lj126 zhi EDGE "
             << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n";
     }
 
@@ -704,7 +1019,18 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
     }
 
     out << "run             1000000\n"
-        << "write_data      data." << suffix << ".npt_eq nocoeff\n";
+        << "write_data      data." << suffix << ".npt_eq nocoeff\n\n"
+        << "# 1M-step, 300 K NVT trajectory for MSD analysis\n"
+        << "unfix           integrate\n"
+        << "undump          traj\n"
+        << "reset_timestep  0\n\n"
+        << "dump            msd all custom " << kMsdDumpEverySteps
+        << " dump.msd.lammpstrj id mol type x y z ix iy iz\n"
+        << "dump_modify     msd first no sort id\n\n"
+        << "fix             msd_integrate all nvt temp 300.0 300.0 50.0\n"
+        << "run             " << kMsdProductionSteps << "\n\n"
+        << "unfix           msd_integrate\n"
+        << "undump          msd\n";
 
     if (!out) throw std::runtime_error("Failed while writing LAMMPS input file: " + files.input);
 }
@@ -716,7 +1042,7 @@ void write_submit_script(const OutputFiles& files) {
         << "#SBATCH --job-name=" << sanitize_job_name(files.case_name) << "_xlink\n"
         << "#SBATCH --time=48:00:00\n"
         << "#SBATCH --nodes=1\n"
-        << "#SBATCH --ntasks-per-node=48\n"
+        << "#SBATCH --ntasks-per-node=96\n"
         << "#SBATCH --mem=200G\n"
         << "#SBATCH --partition=nova\n"
         << "#SBATCH --mail-user=siteng@iastate.edu\n"
@@ -743,17 +1069,31 @@ void write_info(const Settings& s, const System& sys, const Box& box,
 
     const int n[] = {s.n1, s.n2, s.n3, s.n4};
     const int m[] = {s.m1, s.m2, s.m3, s.m4};
-    const char* names[] = {"network_strands", "crosslinkers", "neutral_pdms_filler",
+    const char* names[] = {"network_strands", "crosslinkers", "silicone_oil_filler",
                            "star_moderators"};
+    const long long component_beads[] = {
+        1LL*s.n1*s.m1,
+        1LL*s.n2*s.m2,
+        oil_beads(s),
+        1LL*s.n4*s.m4
+    };
+    const double component_masses[] = {
+        component_beads[0] * s.bead_mass,
+        component_beads[1] * s.bead_mass,
+        s.m3 * oil_chain_mass(s),
+        component_beads[3] * s.bead_mass
+    };
     long long total_beads = 0;
     long long total_molecules = 0;
+    double total_mass = 0.0;
     for (int i = 0; i < 4; ++i) {
-        total_beads += 1LL * n[i] * m[i];
+        total_beads += component_beads[i];
         total_molecules += m[i];
+        total_mass += component_masses[i];
     }
     const double volume = box.lx * box.ly * box.lz;
-    const double realized_filler_wt = total_beads == 0
-        ? 0.0 : 100.0 * (1LL * s.n3 * s.m3) / total_beads;
+    const double realized_filler_wt = total_mass == 0.0
+        ? 0.0 : 100.0 * component_masses[2] / total_mass;
     const double compression_scale = s.thickness > 0.0
         ? std::sqrt(s.density / s.target_density)
         : std::cbrt(s.density / s.target_density);
@@ -763,9 +1103,9 @@ void write_info(const Settings& s, const System& sys, const Box& box,
 
     out << std::fixed << std::setprecision(8)
         << "{\n"
-        << "  \"format\": \"V35-model-info\",\n"
-        << "  \"format_version\": 1,\n"
-        << "  \"formulation\": \"V35\",\n"
+        << "  \"format\": \"" << kFormulationName << "-model-info\",\n"
+        << "  \"format_version\": 2,\n"
+        << "  \"formulation\": \"" << kFormulationName << "\",\n"
         << "  \"case_name\": \"" << json_escape(files.case_name) << "\",\n"
         << "  \"geometry\": \"" << (s.thickness > 0.0 ? "film" : "bulk") << "\",\n"
         << "  \"film_thickness_angstrom\": ";
@@ -785,8 +1125,9 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "  },\n"
         << "  \"components\": {\n";
     for (int i = 0; i < 4; ++i) {
-        const long long beads = 1LL * n[i] * m[i];
-        const double weight_percent = total_beads == 0 ? 0.0 : 100.0 * beads / total_beads;
+        const long long beads = component_beads[i];
+        const double weight_percent = total_mass == 0.0
+            ? 0.0 : 100.0 * component_masses[i] / total_mass;
         const double molecule_percent = total_molecules == 0 ? 0.0 : 100.0 * m[i] / total_molecules;
         out << "    \"" << names[i] << "\": {\"N\": " << n[i] << ", \"M\": " << m[i]
             << ", \"beads\": " << beads << ", \"weight_percent\": " << weight_percent
@@ -796,12 +1137,43 @@ void write_info(const Settings& s, const System& sys, const Box& box,
     out << "  },\n"
         << "  \"composition\": {\n"
         << "    \"total_beads\": " << total_beads << ",\n"
+        << "    \"total_mass_g_per_mol_equivalent\": " << total_mass << ",\n"
         << "    \"total_molecules\": " << total_molecules << ",\n"
         << "    \"requested_filler_weight_percent\": ";
-    if (s.filler_weight_percent >= 0.0) out << s.filler_weight_percent;
+    if (s.oil != "none") out << s.oil_weight_percent;
     else out << "null";
     out << ",\n"
         << "    \"realized_filler_weight_percent\": " << realized_filler_wt << "\n"
+        << "  },\n"
+        << "  \"silicone_oil\": {\n"
+        << "    \"model\": \"" << s.oil << "\",\n"
+        << "    \"explicitly_selected\": " << (s.oil_explicit ? "true" : "false") << ",\n"
+        << "    \"repeat_units_per_chain\": " << s.n3 << ",\n"
+        << "    \"chain_count\": " << s.m3 << ",\n"
+        << "    \"dms_repeats_per_chain\": " << s.n3 - s.mps_per_chain << ",\n"
+        << "    \"mps_repeats_per_chain\": " << s.mps_per_chain << ",\n"
+        << "    \"beads_per_chain\": " << s.n3 + s.mps_per_chain << ",\n"
+        << "    \"chain_mass_g_per_mol\": " << oil_chain_mass(s) << ",\n"
+        << "    \"sequence\": \"" << json_escape(s.sequence) << "\",\n"
+        << "    \"minimum_separation_angstrom\": " << s.oil_minimum_separation << ",\n"
+        << "    \"initial_z_region\": \"central_40_percent_of_box\",\n"
+        << "    \"initial_z_lower_fraction_of_Lz\": " << kOilZLowerFraction << ",\n"
+        << "    \"initial_z_upper_fraction_of_Lz\": " << kOilZUpperFraction << ",\n"
+        << "    \"special_bonds_lj\": [0.0, 0.0, 0.5]\n"
+        << "  },\n"
+        << "  \"force_field\": {\n"
+        << "    \"atom_types\": {\n"
+        << "      \"1\": {\"name\": \"neutral DMS\", \"mass\": " << s.bead_mass << "},\n"
+        << "      \"2\": {\"name\": \"reactive DMS strand/moderator\", \"mass\": " << s.bead_mass << "},\n"
+        << "      \"3\": {\"name\": \"reactive DMS crosslinker\", \"mass\": " << s.bead_mass << "},\n"
+        << "      \"4\": {\"name\": \"MPS backbone\", \"mass\": " << silicone_oil::kMpsBackboneMass << "},\n"
+        << "      \"5\": {\"name\": \"MPS pendant\", \"mass\": " << silicone_oil::kMpsPendantMass << "}\n"
+        << "    },\n"
+        << "    \"special_bonds_lj\": [0.0, 0.0, 0.5],\n"
+        << "    \"dms_mps_mixing\": \"0.579966 * geometric epsilon and arithmetic sigma\",\n"
+        << "    \"dms_mps_epsilon_factor\": "
+        << silicone_oil::kDmsMpsEpsilonFactor << ",\n"
+        << "    \"oil_bond_type_remap\": {\"dms_or_mixed\": 1, \"moderator_internal\": 1, \"formulation_crosslink\": 2, \"mps_backbone\": 3, \"mps_pendant\": 4}\n"
         << "  },\n"
         << "  \"crosslinker\": {\n"
         << "    \"functionality\": " << s.crosslinker_functionality << ",\n"
@@ -825,7 +1197,19 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"volume_angstrom3\": " << volume << ",\n"
         << "    \"bond_length_angstrom\": " << s.bond_length << ",\n"
         << "    \"placement_spacing_angstrom\": " << s.spacing << ",\n"
-        << "    \"network_strand_initial_shape\": \"folded_serpentine\"\n"
+        << "    \"intercomponent_minimum_separation_angstrom\": "
+        << s.oil_minimum_separation << ",\n"
+        << "    \"component_z_placement\": {\n"
+        << "      \"network\": \"bottom_up\",\n"
+        << "      \"crosslinker\": \"top_down\",\n"
+        << "      \"silicone_oil_fraction_of_Lz\": ["
+        << kOilZLowerFraction << ", " << kOilZUpperFraction << "],\n"
+        << "      \"moderator_fraction_of_Lz\": ["
+        << kModeratorZLowerFraction << ", " << kModeratorZUpperFraction << "]\n"
+        << "    },\n"
+        << "    \"network_strand_initial_shape\": \""
+        << (SILICONE_FOLDED_NETWORK ? "folded_serpentine" : "straight_linear")
+        << "\"\n"
         << "  },\n"
         << "  \"topology\": {\n"
         << "    \"atoms\": " << sys.atoms.size() << ",\n"
@@ -836,6 +1220,7 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "  \"random_seeds\": {\n"
         << "    \"crosslink_site_seed\": " << s.crosslink_seed << ",\n"
         << "    \"star_moderator_seed\": " << s.seed << ",\n"
+        << "    \"silicone_oil_seed\": " << s.oil_seed << ",\n"
         << "    \"bond_creation_seed\": 348154\n"
         << "  },\n"
         << "  \"simulation_template\": {\n"
@@ -844,7 +1229,8 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"hot_temperature_K\": 800.0,\n"
         << "    \"final_temperature_K\": 300.0,\n"
         << "    \"wall_style\": ";
-    if (s.thickness > 0.0) out << "\"lj126 at zlo/zhi EDGE\"";
+    if (s.thickness > 0.0)
+        out << "\"separate wall/lj126 fixes at zlo EDGE and zhi EDGE\"";
     else out << "null";
     out << ",\n"
         << "    \"hot_lj\": {\"epsilon\": " << hot.epsilon << ", \"sigma\": " << hot.sigma
@@ -852,8 +1238,21 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"cold_lj\": {\"epsilon\": " << cold.epsilon << ", \"sigma\": " << cold.sigma
         << ", \"cutoff\": " << cold.cutoff << "},\n"
         << "    \"timestep_fs\": 5.0,\n"
-        << "    \"total_run_steps\": 7000000,\n"
-        << "    \"bond_creation_active_steps\": 4000000\n"
+        << "    \"equilibration_run_steps\": 7000000,\n"
+        << "    \"total_run_steps\": 8000000,\n"
+        << "    \"bond_creation_active_steps\": 4000000,\n"
+        << "    \"bond_creation_probability\": "
+        << kCrosslinkCreationProbability << ",\n"
+        << "    \"msd_production\": {\n"
+        << "      \"ensemble\": \"NVT\",\n"
+        << "      \"temperature_K\": 300.0,\n"
+        << "      \"steps\": " << kMsdProductionSteps << ",\n"
+        << "      \"duration_ns\": 5.0,\n"
+        << "      \"dump_every_steps\": " << kMsdDumpEverySteps << ",\n"
+        << "      \"expected_frames\": " << kMsdExpectedFrames << ",\n"
+        << "      \"trajectory_file\": \"dump.msd.lammpstrj\",\n"
+        << "      \"coordinates\": \"wrapped x y z with image flags ix iy iz\"\n"
+        << "    }\n"
         << "  }\n"
         << "}\n";
     if (!out) throw std::runtime_error("Failed while writing model info file: " + files.info);
@@ -865,13 +1264,18 @@ int main(int argc, char** argv) {
     try {
         Settings settings = parse_args(argc, argv);
         apply_crosslinker_stoichiometry(settings);
-        apply_filler_composition(settings);
+        resolve_oil_composition(settings);
         apply_geometry_filename(settings);
         validate(settings);
         report_composition(settings);
-        const long long beads = 1LL*settings.n1*settings.m1 + 1LL*settings.n2*settings.m2
-                              + 1LL*settings.n3*settings.m3 + 1LL*settings.n4*settings.m4;
-        const double volume = beads * settings.bead_mass / (settings.density * kAvogadroScale);
+        const long long base_beads =
+            1LL*settings.n1*settings.m1 + 1LL*settings.n2*settings.m2 +
+            1LL*settings.n4*settings.m4;
+        const double total_mass =
+            base_beads * settings.bead_mass +
+            settings.m3 * oil_chain_mass(settings);
+        const double volume =
+            total_mass / (settings.density * kAvogadroScale);
         Box box{};
         if (settings.thickness > 0.0) {
             box.lz = settings.thickness;
@@ -881,7 +1285,8 @@ int main(int argc, char** argv) {
         }
         const System system = build_system(settings, box);
         const OutputFiles files = output_files(settings);
-        write_data(settings, system, box);
+        create_output_directory(files);
+        write_data(settings, system, box, files.data);
         write_lammps_input(settings, files);
         write_submit_script(files);
         write_info(settings, system, box, files);
@@ -900,4 +1305,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

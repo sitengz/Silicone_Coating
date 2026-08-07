@@ -22,10 +22,10 @@ viscosity analysis.
 
 ## Compile
 
-From WSL:
+From the repository root:
 
 ```bash
-cd "/mnt/c/Users/siteng/Documents/Simulation from Github/Oil"
+cd Oil
 g++ -std=c++14 -O2 -Wall -Wextra -Wpedantic \
     oil_generator.cpp -o oil_generator
 ```
@@ -96,9 +96,13 @@ LAMMPS does not apply an automatic mixing rule.
 The DMS-MPS combining rule is:
 
 ```text
-epsilon(DMS,MPS) = sqrt[epsilon(DMS,DMS) * epsilon(MPS,MPS)]
+epsilon(DMS,MPS) = 0.579966
+                   * sqrt[epsilon(DMS,DMS) * epsilon(MPS,MPS)]
 sigma(DMS,MPS)   = [sigma(DMS,DMS)   + sigma(MPS,MPS)]   / 2
 ```
+
+The epsilon prefactor is applied to DMS interactions with both the MPS
+backbone and MPS pendant beads, at both 300 K and 800 K.
 
 The pure PMPS backbone-pendant term remains the supplied PMPS cross
 interaction; it is not recalculated by the DMS-MPS combining rule.
@@ -115,8 +119,8 @@ special_bonds lj 0 0 0.5
 | Pair | Epsilon (kcal/mol) | Sigma (Å) | Source |
 |---|---:|---:|---|
 | DMS-DMS | 1.012878450 | 6.445843660 | V22/V35 DMS model |
-| DMS-MPS backbone | 1.342678672 | 5.960508330 | Geometric ε; arithmetic σ |
-| DMS-MPS pendant | 0.927248755 | 6.206674705 | Geometric ε; arithmetic σ |
+| DMS-MPS backbone | 0.778707979 | 5.960508330 | 0.579966 × geometric ε; arithmetic σ |
+| DMS-MPS pendant | 0.537772752 | 6.206674705 | 0.579966 × geometric ε; arithmetic σ |
 | MPS backbone-backbone | 1.779864125 | 5.475173000 | PMPS model |
 | MPS backbone-pendant | 1.331357250 | 5.727290650 | Supplied PMPS cross term |
 | MPS pendant-pendant | 0.848858275 | 5.967505750 | PMPS model |
@@ -140,13 +144,13 @@ sigma_PMPS(800)   = sigma_PMPS(300)
 ```
 
 After scaling the pure PMPS terms, the mixed DMS-MPS values are recalculated
-using geometric epsilon and arithmetic sigma.
+using `0.579966 ×` geometric epsilon and arithmetic sigma.
 
 | Pair | Epsilon at 800 K | Sigma at 800 K (Å) | Repulsive cutoff (Å) |
 |---|---:|---:|---:|
 | DMS-DMS | 0.531850637 | 6.640519401 | 7.453731009 |
-| DMS-MPS backbone | 0.705024880 | 6.140526096 | 6.892507499 |
-| DMS-MPS pendant | 0.486887485 | 6.394127126 | 7.177165031 |
+| DMS-MPS backbone | 0.408890459 | 6.140526096 | 6.892507499 |
+| DMS-MPS pendant | 0.282378187 | 6.394127126 | 7.177165031 |
 | MPS backbone-backbone | 0.934585852 | 5.640532791 | 6.331283990 |
 | MPS backbone-pendant | 0.699080133 | 5.900264835 | 6.622823352 |
 | MPS pendant-pendant | 0.445725560 | 6.147734850 | 6.900599052 |
@@ -371,8 +375,21 @@ This version generates periodic bulk oil only. It does not yet:
 - insert the oil into V22 or V35;
 - generate film geometry or walls;
 - create reactive oil end groups;
-- infer any mixing rule other than the explicitly documented geometric-epsilon,
-  arithmetic-sigma DMS-MPS rule.
+- infer any mixing rule other than the explicitly documented
+  `0.579966 ×` geometric-epsilon, arithmetic-sigma DMS-MPS rule.
 
 Those integrations should be done only after the standalone oil structures and
 force-field assignment have been tested.
+
+## Generated file descriptions
+
+- `data.<case>` is the initial LAMMPS data file containing the periodic box,
+  oil atoms, and bonded topology.
+- `in.<case>` is the complete LAMMPS workflow for 800 K relaxation and
+  compression, cooling, 300 K equilibration, and the 100 ns Green-Kubo NVT
+  production run.
+- `submit.<case>.sh` is the one-node, 96-task Slurm submission script.
+- `<case>.info` is a JSON manifest containing composition, sequence,
+  force-field, topology, random-seed, and production settings.
+- `gk_stress.<case>.dat` is created during the LAMMPS run and contains
+  `time_fs`, `pxy`, `pxz`, and `pyz` for viscosity analysis.

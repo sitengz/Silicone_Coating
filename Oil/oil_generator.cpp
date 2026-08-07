@@ -45,6 +45,7 @@ constexpr double kMpsPendantEpsilon = 0.848858275;
 constexpr double kMpsPendantSigma = 5.96750575;
 constexpr double kMpsBackbonePendantEpsilon = 1.33135725;
 constexpr double kMpsBackbonePendantSigma = 5.72729065;
+constexpr double kDmsMpsEpsilonFactor = 0.579966;
 
 struct Vec3 {
     double x = 0.0;
@@ -1164,12 +1165,14 @@ PairParameters pair_parameters(int type_i, int type_j, double temperature) {
         return dms;
     if (type_i <= 3 && type_j == 4)
         return {
-            std::sqrt(dms.epsilon * mps_backbone.epsilon),
+            kDmsMpsEpsilonFactor *
+                std::sqrt(dms.epsilon * mps_backbone.epsilon),
             0.5 * (dms.sigma + mps_backbone.sigma)
         };
     if (type_i <= 3 && type_j == 5)
         return {
-            std::sqrt(dms.epsilon * mps_pendant.epsilon),
+            kDmsMpsEpsilonFactor *
+                std::sqrt(dms.epsilon * mps_pendant.epsilon),
             0.5 * (dms.sigma + mps_pendant.sigma)
         };
     if (type_i == 4 && type_j == 4)
@@ -1257,7 +1260,7 @@ void write_input(
         << "dihedral_coeff  4 8 2.23125 0.24735 2.4327 -2.8832 -4.7124 7.17825 2.33495 -3.74\n\n"
         << "# 800 K repulsive matrix. Each cutoff is 2^(1/6)*sigma for that pair.\n"
         << "# PMPS values use the V22/V35 DMS 800K/300K epsilon and sigma ratios.\n"
-        << "# DMS-MPS mixing: geometric epsilon and arithmetic sigma.\n";
+        << "# DMS-MPS mixing: 0.579966 * geometric epsilon; arithmetic sigma.\n";
     write_pair_matrix(out, hot_temperature, true);
     out << "\n"
         << "timestep        " << kTimestepFs << "\n"
@@ -1354,7 +1357,7 @@ void write_submit(const OutputFiles& files) {
         << "#SBATCH --job-name=" << sanitize_job_name(files.case_name) << "\n"
         << "#SBATCH --time=48:00:00\n"
         << "#SBATCH --nodes=1\n"
-        << "#SBATCH --ntasks-per-node=48\n"
+        << "#SBATCH --ntasks-per-node=96\n"
         << "#SBATCH --mem=200G\n"
         << "#SBATCH --partition=nova\n"
         << "#SBATCH --mail-user=siteng@iastate.edu\n"
@@ -1520,7 +1523,8 @@ void write_info(
         << "    \"velocity\": " << settings.velocity_seed << "\n"
         << "  },\n"
         << "  \"mixing\": {\n"
-        << "    \"dms_mps_rule\": \"geometric epsilon and arithmetic sigma\",\n"
+        << "    \"dms_mps_rule\": \"0.579966 * geometric epsilon and arithmetic sigma\",\n"
+        << "    \"dms_mps_epsilon_factor\": " << kDmsMpsEpsilonFactor << ",\n"
         << "    \"pmps_temperature_scaling\": "
         << "\"300 K PMPS epsilon and sigma scaled by the V22/V35 DMS 800K/300K ratios\",\n"
         << "    \"all_pair_coefficients_written_explicitly\": true\n"
