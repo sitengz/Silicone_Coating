@@ -1050,6 +1050,23 @@ plot(s(last,4), s(last,6), 'o-');
 xlabel('q (1/\AA)'); ylabel('Normalized S_{cc}(q)');
 ```
 
+Plot the final three-dimensional MPS composition field with marker area and
+color proportional to the local MPS fraction:
+
+```matlab
+plot_phase_field_3d('phase_field_final.CASE.dat');
+```
+
+The plot omits empty voxels and occupied voxels with zero MPS fraction. Keep
+the same `MaxMarkerArea` when comparing samples:
+
+```matlab
+plot_phase_field_3d('phase_field_final.CASE.dat', ...
+    'MaxMarkerArea', 180, ...
+    'MarkerAlpha', 0.60, ...
+    'MinMPSFraction', 0.00);
+```
+
 Phase separation should not be assigned from a single number. For a final
 snapshot, stronger evidence is the consistent combination of excess local
 segregation, enhanced low-q `Scc`, and a large PMPS-rich chain cluster. These
