@@ -32,6 +32,27 @@ g++ -std=c++14 -O2 -Wall -Wextra -Wpedantic \
 
 The code is compatible with C++14 and newer compilers. C++17 can also be used.
 
+## Configuration file
+
+Edit [`model.conf`](model.conf) and run:
+
+```bash
+./oil_generator --config model.conf
+```
+
+The file uses `key = value` lines. Blank lines and `#` comments are ignored;
+keys may use underscores or hyphens (for example, `mps_percent` or
+`mps-percent`). All command-line options listed below are available as keys,
+including `output`. Command-line values override the same keys in the file:
+
+```bash
+./oil_generator --config model.conf --chains 100
+```
+
+The included configuration describes 500 chains of 32 repeat units with 50%
+MPS. The configuration path is resolved relative to the directory where the
+generator is run. The existing command-line-only workflow remains available.
+
 ## Default model
 
 Running without options:
@@ -299,6 +320,7 @@ Examples:
 | `--seed N` | positive integer | 20260727 | Sequence, conformation, rotation, and packing seed |
 | `--velocity-seed N` | positive integer | 492845 | LAMMPS initial-velocity seed |
 | `--output FILE` | path | automatic | Override the data filename; companion files use the same directory |
+| `--config FILE` | path | unset | Read settings from a `key = value` file |
 | `--help` | — | — | Print command help |
 
 ## Generated LAMMPS workflow

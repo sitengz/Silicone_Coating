@@ -20,6 +20,27 @@ g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
     v22_generator.cpp -o v22_generator
 ```
 
+## Configuration file
+
+Edit [`model.conf`](model.conf) and run:
+
+```bash
+./v22_generator --config model.conf
+```
+
+The example selects 10 wt% of a 50/50 DMS/MPS copolymer oil. Use one
+`key = value` per line; blank lines and `#` comments are ignored. Keys may
+use underscores or hyphens, such as `oil_length` or `oil-length`, and all
+existing command-line settings can be placed in the file. Command-line values
+override the same keys in the file, for example:
+
+```bash
+./v22_generator --config model.conf --oil-wt 15
+```
+
+The configuration path is relative to the current working directory. Running
+without `--config` retains the command-line-only behavior.
+
 ## Default no-oil reference
 
 ```bash
@@ -150,6 +171,7 @@ convention. This is an intentional change from older formulation inputs.
 | `--thickness X` | Fixed film thickness |
 | `--seed N` | Moderator seed |
 | `--output FILE` | Override the data filename and generated case-folder name |
+| `--config FILE` | Read settings from a `key = value` file |
 | `--help` | Print built-in help |
 
 `M2` is always calculated from `M2=2*M1/functionality`. Oil chain count is

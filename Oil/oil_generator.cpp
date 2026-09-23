@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "../Formulation/config_input.hpp"
+
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -120,6 +122,7 @@ struct Settings {
     std::string output;
     bool output_explicit = false;
     int mps_per_chain = 0;
+    std::string config_file;
 };
 
 struct Atom {
@@ -227,52 +230,53 @@ void print_help(const char* program) {
         << "  --seed N                 conformation/packing seed (default: 20260727)\n"
         << "  --velocity-seed N        LAMMPS velocity seed (default: 492845)\n"
         << "  --output FILE            override the automatic data filename\n"
+        << "  --config FILE            read key = value settings; CLI values override file\n"
         << "  --help                   show this help\n";
+}
+
+void apply_option(Settings& settings, const std::string& option,
+                  const std::string& value) {
+    if (option == "--length" || option == "--n")
+        settings.length = parse_int(value, option);
+    else if (option == "--chains" || option == "--m")
+        settings.chains = parse_int(value, option);
+    else if (option == "--mps-percent") {
+        settings.mps_monomer_percent = parse_double(value, option);
+        settings.mps_percent_explicit = true;
+    } else if (option == "--mps-wt")
+        settings.mps_weight_percent = parse_double(value, option);
+    else if (option == "--sequence")
+        settings.sequence = value;
+    else if (option == "--density")
+        settings.density = parse_double(value, option);
+    else if (option == "--target-density")
+        settings.target_density = parse_double(value, option);
+    else if (option == "--min-separation")
+        settings.minimum_separation = parse_double(value, option);
+    else if (option == "--seed") {
+        const int parsed = parse_int(value, option);
+        if (parsed <= 0) throw std::runtime_error("--seed must be positive");
+        settings.seed = static_cast<std::uint32_t>(parsed);
+    } else if (option == "--velocity-seed") {
+        const int parsed = parse_int(value, option);
+        if (parsed <= 0) throw std::runtime_error("--velocity-seed must be positive");
+        settings.velocity_seed = static_cast<std::uint32_t>(parsed);
+    } else if (option == "--output") {
+        settings.output = value;
+        settings.output_explicit = true;
+    } else {
+        throw std::runtime_error("Unknown option: " + option);
+    }
 }
 
 Settings parse_args(int argc, char** argv) {
     Settings settings;
-    for (int i = 1; i < argc; ++i) {
-        const std::string option = argv[i];
-        if (option == "--help") {
-            print_help(argv[0]);
-            std::exit(0);
-        }
-        if (i + 1 >= argc)
-            throw std::runtime_error("Missing value after " + option);
-        const std::string value = argv[++i];
-        if (option == "--length" || option == "--n")
-            settings.length = parse_int(value, option);
-        else if (option == "--chains" || option == "--m")
-            settings.chains = parse_int(value, option);
-        else if (option == "--mps-percent") {
-            settings.mps_monomer_percent = parse_double(value, option);
-            settings.mps_percent_explicit = true;
-        } else if (option == "--mps-wt")
-            settings.mps_weight_percent = parse_double(value, option);
-        else if (option == "--sequence")
-            settings.sequence = value;
-        else if (option == "--density")
-            settings.density = parse_double(value, option);
-        else if (option == "--target-density")
-            settings.target_density = parse_double(value, option);
-        else if (option == "--min-separation")
-            settings.minimum_separation = parse_double(value, option);
-        else if (option == "--seed") {
-            const int parsed = parse_int(value, option);
-            if (parsed <= 0) throw std::runtime_error("--seed must be positive");
-            settings.seed = static_cast<std::uint32_t>(parsed);
-        } else if (option == "--velocity-seed") {
-            const int parsed = parse_int(value, option);
-            if (parsed <= 0) throw std::runtime_error("--velocity-seed must be positive");
-            settings.velocity_seed = static_cast<std::uint32_t>(parsed);
-        } else if (option == "--output") {
-            settings.output = value;
-            settings.output_explicit = true;
-        } else {
-            throw std::runtime_error("Unknown option: " + option);
-        }
-    }
+    settings.config_file = silicone_config::parse_arguments(
+        argc, argv,
+        [&](const std::string& option, const std::string& value) {
+            apply_option(settings, option, value);
+        },
+        [&] { print_help(argv[0]); });
     return settings;
 }
 
@@ -1458,6 +1462,13 @@ void write_info(
         << "    \"model_info\": \"" << json_escape(files.info_basename) << "\",\n"
         << "    \"green_kubo_stress_output\": \""
         << json_escape(files.stress_basename) << "\"\n"
+        << "  },\n"
+        << "  \"generator_input\": {\n"
+        << "    \"config_file\": ";
+    if (settings.config_file.empty()) out << "null";
+    else out << '"' << json_escape(settings.config_file) << '"';
+    out << ",\n"
+        << "    \"precedence\": \"defaults < config file < command line\"\n"
         << "  },\n"
         << "  \"composition\": {\n"
         << "    \"chain_length\": " << settings.length << ",\n"
