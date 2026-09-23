@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../Formulation/silicone_oil_component.hpp"
+#include "../Formulation/config_input.hpp"
 
 #ifndef SILICONE_FORMULATION_NAME
 #define SILICONE_FORMULATION_NAME "V35"
@@ -70,6 +71,7 @@ struct Settings {
     int mps_per_chain = 0;
     std::uint32_t oil_seed = 20260727u;
     double oil_minimum_separation = 4.5;
+    std::string config_file;
 };
 
 struct Atom { int id, molecule, type; double charge, x, y, z; };
@@ -127,61 +129,66 @@ void print_help(const char* program) {
         << "  --seed N          reproducible random seed (default: 5489)\n"
         << "  --output FILE     override the automatically generated data filename\n"
         << "                    a case folder is created beside this path\n"
+        << "  --config FILE     read key = value settings; CLI values override file\n"
         << "  --help             show this help\n";
+}
+
+void apply_option(Settings& s, const std::string& option,
+                  const std::string& value) {
+    if      (option == "--n1") s.n1 = parse_int(value, option);
+    else if (option == "--m1") s.m1 = parse_int(value, option);
+    else if (option == "--n2") s.n2 = parse_int(value, option);
+    else if (option == "--m2")
+        throw std::runtime_error("M2 is determined by M2=2*M1/functionality; do not supply --m2");
+    else if (option == "--n3" || option == "--m3" ||
+             option == "--filler-length" || option == "--filler-wt")
+        throw std::runtime_error(
+            option + " is obsolete; use --oil, --oil-length, and --oil-wt");
+    else if (option == "--n4") s.n4 = parse_int(value, option);
+    else if (option == "--m4") s.m4 = parse_int(value, option);
+    else if (option == "--oil") { s.oil = value; s.oil_explicit = true; }
+    else if (option == "--oil-length") {
+        s.n3 = parse_int(value, option);
+        s.oil_length_explicit = true;
+    }
+    else if (option == "--oil-wt") {
+        s.oil_weight_percent = parse_double(value, option);
+        s.oil_weight_explicit = true;
+    }
+    else if (option == "--mps-percent")
+        s.mps_monomer_percent = parse_double(value, option);
+    else if (option == "--mps-wt")
+        s.mps_weight_percent = parse_double(value, option);
+    else if (option == "--sequence") {
+        s.sequence = value;
+        s.sequence_explicit = true;
+    }
+    else if (option == "--oil-seed")
+        s.oil_seed = static_cast<std::uint32_t>(parse_int(value, option));
+    else if (option == "--oil-min-separation")
+        s.oil_minimum_separation = parse_double(value, option);
+    else if (option == "--functionality") s.crosslinker_functionality = parse_int(value, option);
+    else if (option == "--crosslink-distribution") s.crosslink_distribution = value;
+    else if (option == "--crosslink-seed") s.crosslink_seed = static_cast<std::uint32_t>(parse_int(value, option));
+    else if (option == "--mass") s.bead_mass = parse_double(value, option);
+    else if (option == "--density") s.density = parse_double(value, option);
+    else if (option == "--target-density") s.target_density = parse_double(value, option);
+    else if (option == "--bond-length") s.bond_length = parse_double(value, option);
+    else if (option == "--spacing") s.spacing = parse_double(value, option);
+    else if (option == "--thickness") s.thickness = parse_double(value, option);
+    else if (option == "--seed") s.seed = static_cast<std::uint32_t>(parse_int(value, option));
+    else if (option == "--output") { s.output = value; s.output_explicit = true; }
+    else throw std::runtime_error("Unknown option: " + option);
 }
 
 Settings parse_args(int argc, char** argv) {
     Settings s;
-    for (int i = 1; i < argc; ++i) {
-        const std::string option = argv[i];
-        if (option == "--help") { print_help(argv[0]); std::exit(0); }
-        if (i + 1 >= argc) throw std::runtime_error("Missing value after " + option);
-        const std::string value = argv[++i];
-        if      (option == "--n1") s.n1 = parse_int(value, option);
-        else if (option == "--m1") s.m1 = parse_int(value, option);
-        else if (option == "--n2") s.n2 = parse_int(value, option);
-        else if (option == "--m2")
-            throw std::runtime_error("M2 is determined by M2=2*M1/functionality; do not supply --m2");
-        else if (option == "--n3" || option == "--m3" ||
-                 option == "--filler-length" || option == "--filler-wt")
-            throw std::runtime_error(
-                option + " is obsolete; use --oil, --oil-length, and --oil-wt");
-        else if (option == "--n4") s.n4 = parse_int(value, option);
-        else if (option == "--m4") s.m4 = parse_int(value, option);
-        else if (option == "--oil") { s.oil = value; s.oil_explicit = true; }
-        else if (option == "--oil-length") {
-            s.n3 = parse_int(value, option);
-            s.oil_length_explicit = true;
-        }
-        else if (option == "--oil-wt") {
-            s.oil_weight_percent = parse_double(value, option);
-            s.oil_weight_explicit = true;
-        }
-        else if (option == "--mps-percent")
-            s.mps_monomer_percent = parse_double(value, option);
-        else if (option == "--mps-wt")
-            s.mps_weight_percent = parse_double(value, option);
-        else if (option == "--sequence") {
-            s.sequence = value;
-            s.sequence_explicit = true;
-        }
-        else if (option == "--oil-seed")
-            s.oil_seed = static_cast<std::uint32_t>(parse_int(value, option));
-        else if (option == "--oil-min-separation")
-            s.oil_minimum_separation = parse_double(value, option);
-        else if (option == "--functionality") s.crosslinker_functionality = parse_int(value, option);
-        else if (option == "--crosslink-distribution") s.crosslink_distribution = value;
-        else if (option == "--crosslink-seed") s.crosslink_seed = static_cast<std::uint32_t>(parse_int(value, option));
-        else if (option == "--mass") s.bead_mass = parse_double(value, option);
-        else if (option == "--density") s.density = parse_double(value, option);
-        else if (option == "--target-density") s.target_density = parse_double(value, option);
-        else if (option == "--bond-length") s.bond_length = parse_double(value, option);
-        else if (option == "--spacing") s.spacing = parse_double(value, option);
-        else if (option == "--thickness") s.thickness = parse_double(value, option);
-        else if (option == "--seed") s.seed = static_cast<std::uint32_t>(parse_int(value, option));
-        else if (option == "--output") { s.output = value; s.output_explicit = true; }
-        else throw std::runtime_error("Unknown option: " + option);
-    }
+    s.config_file = silicone_config::parse_arguments(
+        argc, argv,
+        [&](const std::string& option, const std::string& value) {
+            apply_option(s, option, value);
+        },
+        [&] { print_help(argv[0]); });
     return s;
 }
 
@@ -1113,7 +1120,7 @@ void write_info(const Settings& s, const System& sys, const Box& box,
     else out << "null";
     out << ",\n  \"film_thickness_source\": ";
     if (s.thickness > 0.0)
-        out << "\"command-line value captured from the equilibrated bulk result\"";
+        out << "\"requested value captured from the equilibrated bulk result\"";
     else
         out << "null";
     out << ",\n"
@@ -1122,6 +1129,13 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"lammps_input\": \"" << json_escape(files.input_basename) << "\",\n"
         << "    \"slurm_submit\": \"" << json_escape(files.submit_basename) << "\",\n"
         << "    \"model_info\": \"" << json_escape(files.info_basename) << "\"\n"
+        << "  },\n"
+        << "  \"generator_input\": {\n"
+        << "    \"config_file\": ";
+    if (s.config_file.empty()) out << "null";
+    else out << '"' << json_escape(s.config_file) << '"';
+    out << ",\n"
+        << "    \"precedence\": \"defaults < config file < command line\"\n"
         << "  },\n"
         << "  \"components\": {\n";
     for (int i = 0; i < 4; ++i) {
