@@ -1,5 +1,10 @@
 # Shared formulation oil component
 
+The standalone bulk oil generator now lives in
+[`sitengz/Silicone_Oil`](https://github.com/sitengz/Silicone_Oil). This directory
+contains the oil implementation used specifically by the V22 and V35
+formulation generators.
+
 `silicone_oil_component.hpp` is the shared implementation used by both
 `V22/v22_generator.cpp` and `V35/v35_generator.cpp`.
 

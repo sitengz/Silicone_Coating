@@ -156,7 +156,7 @@ to prevent an unspecified filler from being generated accidentally.
 
 Angles use type 1 DMS harmonic, type 2 MPS-backbone quartic, and type 3
 pendant-containing quartic interactions. Dihedral types 1–4 retain the rough
-oil rules used by the standalone Oil generator.
+oil rules used by the [standalone Silicone Oil generator](https://github.com/sitengz/Silicone_Oil).
 
 The complete 800 K and 300 K pair matrices are written explicitly. Types 1–3
 share the DMS nonbonded model. DMS–MPS interactions use:
