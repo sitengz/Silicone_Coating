@@ -49,9 +49,7 @@ def main() -> None:
     help_text = subprocess.check_output([str(generator), "--help"], text=True)
     if f"{args.formulation} four-component" not in help_text:
         raise ValueError(f"{generator} is not a {args.formulation} generator")
-    series_root = ROOT / "simulations"
-    if args.formulation == "V35":
-        series_root /= "V35"
+    series_root = ROOT / "simulations" / args.formulation
     configs = sorted(series_root.glob("*_*wt/model.conf"))
     if len(configs) != 14:
         raise ValueError(f"Expected 14 configs, found {len(configs)}")
