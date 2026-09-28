@@ -52,7 +52,7 @@ def main() -> None:
     series_root = ROOT / "simulations"
     if args.formulation == "V35":
         series_root /= "V35"
-    configs = sorted(series_root.glob("0[1-7]_*wt/model.conf"))
+    configs = sorted(series_root.glob("*_*wt/model.conf"))
     if len(configs) != 14:
         raise ValueError(f"Expected 14 configs, found {len(configs)}")
     missing = []
