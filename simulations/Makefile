@@ -3,10 +3,10 @@
 ROOT := ..
 PYTHON ?= python3
 
-V22_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard [0-9][0-9]_*wt/model.conf))))
-V35_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard V35/[0-9][0-9]_*wt/model.conf))))
-V22_INFO := $(foreach case,$(V22_CASES),$(case)/V22_Oil$(case)/V22_Oil$(case).info)
-V35_INFO := $(foreach case,$(V35_CASES),V35/$(case)/V35_Oil$(case)/V35_Oil$(case).info)
+V22_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard *_*wt/model.conf))))
+V35_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard V35/*_*wt/model.conf))))
+V22_INFO := $(foreach case,$(V22_CASES),$(case)/V22_$(case)/V22_$(case).info)
+V35_INFO := $(foreach case,$(V35_CASES),V35/$(case)/V35_$(case)/V35_$(case).info)
 
 .PHONY: all bulk bulk-v22 bulk-v35 films films-v22 films-v35 films-dry-run help
 
@@ -19,12 +19,12 @@ bulk-v22: $(V22_INFO)
 bulk-v35: $(V35_INFO)
 
 define V22_CASE_RULE
-$(1)/V22_Oil$(1)/V22_Oil$(1).info: $(1)/model.conf $(ROOT)/build/v22_generator
+$(1)/V22_$(1)/V22_$(1).info: $(1)/model.conf $(ROOT)/build/v22_generator
 	cd $(ROOT) && ./build/v22_generator --config simulations/$(1)/model.conf
 endef
 
 define V35_CASE_RULE
-V35/$(1)/V35_Oil$(1)/V35_Oil$(1).info: V35/$(1)/model.conf $(ROOT)/build/v35_generator
+V35/$(1)/V35_$(1)/V35_$(1).info: V35/$(1)/model.conf $(ROOT)/build/v35_generator
 	cd $(ROOT) && ./build/v35_generator --config simulations/V35/$(1)/model.conf
 endef
 
