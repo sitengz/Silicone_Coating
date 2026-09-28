@@ -1,6 +1,6 @@
 # V22/V35 coating series: seven oils × two loadings × two elastomers
 
-The 14 top-level case folders contain V22 configurations, and the
+The 14 case folders under `V22/` contain V22 configurations, and the
 14 folders under `V35/` contain V35 configurations, for 5 and 10 wt% of
 each of the seven oils in the separate Silicone_Oil repository's numbered
 `simulations/01`–`07` series. Only the oil **chemistry, chain length, and MPS
@@ -25,7 +25,7 @@ number of chains with one extra, and the realized mol%.
 `MPS5mol` denotes the MPS repeat-unit mole percentage; the final `5wt` or
 `10wt` denotes the oil loading in the complete coating formulation.
 
-Each top-level `model.conf` fixes the V22 base (`N1=128`, `M1=900`, functionality 8),
+Each `V22/*/model.conf` fixes the V22 base (`N1=128`, `M1=900`, functionality 8),
 the oil identity, chain length, MPS fraction, and requested oil wt%. These
 values can be overridden on the generator command line. The generated `.info`
 file records the actual integer chain count and realized weight percentage.
@@ -36,7 +36,7 @@ From the repository root, compile and generate one bulk case:
 
 ```bash
 make generators
-./build/v22_generator --config simulations/Copol_N179_MPS5mol_5wt/model.conf
+./build/v22_generator --config simulations/V22/Copol_N179_MPS5mol_5wt/model.conf
 ./build/v35_generator --config simulations/V35/Copol_N179_MPS5mol_5wt/model.conf
 ```
 
@@ -50,10 +50,11 @@ input, submit script, and `.info`, so avoid doing that in a case with
 hand-edited inputs or an active simulation.
 
 The generated data, LAMMPS input, Slurm script, and `.info` are in the
-sample's child folder, e.g. `simulations/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt/` or
+sample's child folder, e.g. `simulations/V22/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt/` or
 `simulations/V35/Copol_N179_MPS5mol_5wt/V35_Copol_N179_MPS5mol_5wt/`.
-The earlier numbered packages, if present locally, are left untouched;
-the renamed configs generate new packages in separate folders.
+Earlier generated packages in the former top-level folders, if present
+locally, are left untouched; these configs generate packages under `V22/`
+and `V35/`.
 Only the configs and generator tooling are intended for GitHub; generated
 data and job files can be recreated with the commands above.
 Submit only after reviewing the inputs and cluster resources.
@@ -78,7 +79,7 @@ For a completed surface job, analyze its production stress file with:
 
 ```bash
 python3 Analysis/surface_stress.py \
-    simulations/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt_film/V22_Copol_N179_MPS5mol_5wt_film.info
+    simulations/V22/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt_film/V22_Copol_N179_MPS5mol_5wt_film.info
 ```
 
 The analyzer creates a sample-named output folder with raw time series,
