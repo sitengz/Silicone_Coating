@@ -1,7 +1,7 @@
 # V22/V35 coating series: seven oils × two loadings × two elastomers
 
-The 14 top-level numbered case folders contain V22 configurations, and the
-14 numbered folders under `V35/` contain V35 configurations, for 5 and 10 wt% of
+The 14 top-level case folders contain V22 configurations, and the
+14 folders under `V35/` contain V35 configurations, for 5 and 10 wt% of
 each of the seven oils in the separate Silicone_Oil repository's numbered
 `simulations/01`–`07` series. Only the oil **chemistry, chain length, and MPS
 repeat fraction** are transferred. The oil-only chain counts (which target
@@ -14,13 +14,16 @@ number of chains with one extra, and the realized mol%.
 
 | Oil sample | Chemistry | Oil length | MPS mol% | Case suffixes (both bases) |
 |---|---|---:|---:|---|
-| 01 | PDMS | 30 | 0 | `01_5wt`, `01_10wt` |
-| 02 | PMPS | 12 | 100 | `02_5wt`, `02_10wt` |
-| 03 | random copolymer | 179 | 5 | `03_5wt`, `03_10wt` |
-| 04 | random copolymer | 42 | 10 | `04_5wt`, `04_10wt` |
-| 05 | random copolymer | 44 | 10 | `05_5wt`, `05_10wt` |
-| 06 | random copolymer | 65 | 10 | `06_5wt`, `06_10wt` |
-| 07 | random copolymer | 15 | 50 | `07_5wt`, `07_10wt` |
+| 01 | PDMS | 30 | 0 | `PDMS_N30_5wt`, `PDMS_N30_10wt` |
+| 02 | PMPS | 12 | 100 | `PMPS_N12_5wt`, `PMPS_N12_10wt` |
+| 03 | random copolymer | 179 | 5 | `Copol_N179_MPS5mol_5wt`, `Copol_N179_MPS5mol_10wt` |
+| 04 | random copolymer | 42 | 10 | `Copol_N42_MPS10mol_5wt`, `Copol_N42_MPS10mol_10wt` |
+| 05 | random copolymer | 44 | 10 | `Copol_N44_MPS10mol_5wt`, `Copol_N44_MPS10mol_10wt` |
+| 06 | random copolymer | 65 | 10 | `Copol_N65_MPS10mol_5wt`, `Copol_N65_MPS10mol_10wt` |
+| 07 | random copolymer | 15 | 50 | `Copol_N15_MPS50mol_5wt`, `Copol_N15_MPS50mol_10wt` |
+
+`MPS5mol` denotes the MPS repeat-unit mole percentage; the final `5wt` or
+`10wt` denotes the oil loading in the complete coating formulation.
 
 Each top-level `model.conf` fixes the V22 base (`N1=128`, `M1=900`, functionality 8),
 the oil identity, chain length, MPS fraction, and requested oil wt%. These
@@ -33,8 +36,8 @@ From the repository root, compile and generate one bulk case:
 
 ```bash
 make generators
-./build/v22_generator --config simulations/03_5wt/model.conf
-./build/v35_generator --config simulations/V35/03_5wt/model.conf
+./build/v22_generator --config simulations/Copol_N179_MPS5mol_5wt/model.conf
+./build/v35_generator --config simulations/V35/Copol_N179_MPS5mol_5wt/model.conf
 ```
 
 To build every C++ generator and analyzer, run `make` at the repository root.
@@ -47,9 +50,10 @@ input, submit script, and `.info`, so avoid doing that in a case with
 hand-edited inputs or an active simulation.
 
 The generated data, LAMMPS input, Slurm script, and `.info` are in the
-sample's child folder, e.g. `simulations/03_5wt/V22_Oil03_5wt/` or
-`simulations/V35/03_5wt/V35_Oil03_5wt/`. All 28 bulk
-packages have been generated locally as initial configurations and **have not been run**.
+sample's child folder, e.g. `simulations/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt/` or
+`simulations/V35/Copol_N179_MPS5mol_5wt/V35_Copol_N179_MPS5mol_5wt/`.
+The earlier numbered packages, if present locally, are left untouched;
+the renamed configs generate new packages in separate folders.
 Only the configs and generator tooling are intended for GitHub; generated
 data and job files can be recreated with the commands above.
 Submit only after reviewing the inputs and cluster resources.
@@ -74,7 +78,7 @@ For a completed surface job, analyze its production stress file with:
 
 ```bash
 python3 Analysis/surface_stress.py \
-    simulations/03_5wt/V22_Oil03_5wt_film/V22_Oil03_5wt_film.info
+    simulations/Copol_N179_MPS5mol_5wt/V22_Copol_N179_MPS5mol_5wt_film/V22_Copol_N179_MPS5mol_5wt_film.info
 ```
 
 The analyzer creates a sample-named output folder with raw time series,
