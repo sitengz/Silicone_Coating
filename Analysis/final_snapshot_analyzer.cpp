@@ -52,6 +52,9 @@ struct ModelInfo {
     double total_mass_g_per_mol = 0.0;
     double requested_filler_weight_percent = 0.0;
     double realized_filler_weight_percent = 0.0;
+    long long oil_repeat_units_per_chain = 0;
+    long long oil_mps_per_chain = 0;
+    long long oil_chains_with_extra_mps = 0;
     long long initial_bonds = 0;
     long long type2_sites_total = 0;
     long long type3_sites_total = 0;
@@ -483,6 +486,13 @@ ModelInfo parse_model_info(const std::string &path) {
         composition, "requested_filler_weight_percent");
     info.realized_filler_weight_percent =
         json_number(composition, "realized_filler_weight_percent");
+    const std::string oil = json_object_for_key(text, "silicone_oil");
+    info.oil_repeat_units_per_chain =
+        json_integer(oil, "repeat_units_per_chain");
+    info.oil_mps_per_chain = json_integer(oil, "mps_repeats_per_chain");
+    if (oil.find("\"chains_with_extra_mps\"") != std::string::npos)
+        info.oil_chains_with_extra_mps =
+            json_integer(oil, "chains_with_extra_mps");
 
     const std::string topology = json_object_for_key(text, "topology");
     info.initial_bonds = json_integer(topology, "bonds");
@@ -1253,12 +1263,16 @@ void validate(
         if (component == kFiller) {
             const ComponentInfo &filler = info.components[kFiller];
             if (filler.molecules <= 0 ||
-                filler.beads % filler.molecules != 0) {
+                filler.beads != filler.molecules *
+                    (info.oil_repeat_units_per_chain + info.oil_mps_per_chain) +
+                    info.oil_chains_with_extra_mps) {
                 throw std::runtime_error(
-                    "filler bead total is not compatible with equal generated "
-                    "chains in the info file");
+                    "filler bead total is inconsistent with the oil chain "
+                    "composition in the info file");
             }
-            expected = filler.beads / filler.molecules;
+            const long long oil_index = molecule - molecule_ends[kCrosslinker] - 1;
+            expected = info.oil_repeat_units_per_chain + info.oil_mps_per_chain +
+                (oil_index < info.oil_chains_with_extra_mps ? 1 : 0);
         }
         if (data.molecules[static_cast<std::size_t>(molecule)].beads != expected) {
             throw std::runtime_error(

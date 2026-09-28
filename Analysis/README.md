@@ -1,12 +1,41 @@
 # V22/V35 analysis tools
 
-This directory contains four independent analyzers. `z_profile.cpp` measures
+This directory contains the existing four analyzers plus `surface_stress.py`.
+`z_profile.cpp` measures
 the through-thickness composition, `final_snapshot_analyzer.cpp` measures
 realized crosslinking and strand structure, and `msd_analyzer.cpp` measures
 translational motion and diffusion from `dump.msd.lammpstrj`.
 `phase_separation_analyzer.cpp` measures DMS/MPS composition fluctuations,
 domain length scales, and PMPS-rich chain clusters. Every analyzer uses the
 matching generator `.info` file to identify the model correctly.
+
+## Free-surface mechanical stress
+
+For a **completed V22/V35 film surface job**, run from the repository root:
+
+```bash
+python3 Analysis/surface_stress.py path/to/CASE.info
+```
+
+The analyzer reads `stress.CASE.surface.dat` beside the film `.info` by
+default. Use `--phase equil` to inspect the relaxation series,
+`--block-ns 5` to set averaging blocks, or `--file PATH` for another stress
+file. It writes `surface_series.CASE.dat`, `surface_blocks.CASE.dat`, and
+`surface_summary.CASE.json` into a folder named `CASE` in the current
+directory; `--output-dir PATH` changes that location. The raw tables are
+readable in MATLAB.
+
+It computes `Lz * [Pzz - (Pxx + Pyy)/2] / 2`, converting atmosphere-angstrom
+to mN/m. `Lz` is the **whole simulation cell height including vacuum**.
+The division by two assumes two free surfaces. This result is apparent
+mechanical surface stress, not necessarily a solid's surface free energy.
+The script does not correct for residual network stress or prove
+equilibration. Compare with matched bulk stress and examine block drift,
+surface integrity, and oil distribution before drawing conclusions.
+
+The phase and final-snapshot analyzers also accept the generator's balanced
+MPS allocation, in which some oil chains have one extra MPS pendant bead.
+Older fixed-composition `.info` files remain supported.
 
 `z_profile.cpp` calculates the through-thickness composition and density
 profile of a four-component V22 or V35 system from one final LAMMPS data file.

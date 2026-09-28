@@ -214,3 +214,25 @@ For example, `--output results/data.test_case` creates
 - `submit.<case>.sh` is the one-node, 96-task Slurm submission script.
 - `<case>.info` is a JSON manifest containing composition, geometry,
   force-field, topology, random-seed, and simulation settings.
+
+# Surface measurement update
+
+With `--thickness`, the generator also writes a separate
+`in.<case>.surface` and `submit.<case>.surface.sh`. Run the existing film
+curing job first. The surface job reads `data.<case>.npt_eq`, extends `z` by
+50 Å on each side without scaling atoms, leaves the z walls off, relaxes
+at 300 K in NVT for 10 million steps, and records pressure during another
+10 million-step NVT run. The original bulk and wall-bounded film inputs are
+unchanged. See `Analysis/surface_stress.py` for the apparent mechanical
+surface-stress analysis. The surface stage should be reviewed for walltime,
+vacuum clearance, equilibration, and oil redistribution on the cluster.
+
+`--config FILE` accepts `key = value` lines (for example `oil_wt = 5`);
+explicit CLI options override file values. See `simulations/README.md` for
+the 14-case V22 coating series.
+For copolymer oils, `--mps-distribution balanced` distributes fractional MPS
+composition across chains; the default `fixed` retains the earlier
+identical-chain behavior.
+For short validation runs, override `--surface-relax-steps`,
+`--surface-production-steps`, and `--surface-sample-every`; `--surface-padding`
+sets the vacuum on each side (must exceed the 15 Å pair cutoff).
