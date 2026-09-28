@@ -3,9 +3,9 @@
 ROOT := ..
 PYTHON ?= python3
 
-V22_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard *_*wt/model.conf))))
+V22_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard V22/*_*wt/model.conf))))
 V35_CASES := $(notdir $(patsubst %/,%,$(dir $(wildcard V35/*_*wt/model.conf))))
-V22_INFO := $(foreach case,$(V22_CASES),$(case)/V22_$(case)/V22_$(case).info)
+V22_INFO := $(foreach case,$(V22_CASES),V22/$(case)/V22_$(case)/V22_$(case).info)
 V35_INFO := $(foreach case,$(V35_CASES),V35/$(case)/V35_$(case)/V35_$(case).info)
 
 .PHONY: all bulk bulk-v22 bulk-v35 films films-v22 films-v35 films-dry-run help
@@ -19,8 +19,8 @@ bulk-v22: $(V22_INFO)
 bulk-v35: $(V35_INFO)
 
 define V22_CASE_RULE
-$(1)/V22_$(1)/V22_$(1).info: $(1)/model.conf $(ROOT)/build/v22_generator
-	cd $(ROOT) && ./build/v22_generator --config simulations/$(1)/model.conf
+V22/$(1)/V22_$(1)/V22_$(1).info: V22/$(1)/model.conf $(ROOT)/build/v22_generator
+	cd $(ROOT) && ./build/v22_generator --config simulations/V22/$(1)/model.conf
 endef
 
 define V35_CASE_RULE
