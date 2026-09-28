@@ -32,11 +32,19 @@ functionality 4; all seven oil definitions and loadings are identical.
 From the repository root, compile and generate one bulk case:
 
 ```bash
-g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic V22/v22_generator.cpp -o V22/v22_generator
-./V22/v22_generator --config simulations/03_5wt/model.conf
-g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic V35/v35_generator.cpp -o V35/v35_generator
-./V35/v35_generator --config simulations/V35/03_5wt/model.conf
+make generators
+./build/v22_generator --config simulations/03_5wt/model.conf
+./build/v35_generator --config simulations/V35/03_5wt/model.conf
 ```
+
+To build every C++ generator and analyzer, run `make` at the repository root.
+To generate all 28 bulk packages from the committed configs, run
+`make -C simulations`. Use `make -C simulations bulk-v22` or `bulk-v35`
+for only one elastomer series. Make skips packages whose `.info` is newer
+than their config and generator; `make -B -C simulations bulk` forces a
+regeneration. Regenerating a case overwrites its generated initial data,
+input, submit script, and `.info`, so avoid doing that in a case with
+hand-edited inputs or an active simulation.
 
 The generated data, LAMMPS input, Slurm script, and `.info` are in the
 sample's child folder, e.g. `simulations/03_5wt/V22_Oil03_5wt/` or
@@ -50,14 +58,12 @@ After every bulk run has written its final `data.<case>.npt_eq`, generate the
 corresponding independently built film with the bulk's measured `Lz`:
 
 ```bash
-python3 simulations/generate_films.py --generator V22/v22_generator --dry-run
-python3 simulations/generate_films.py --generator V22/v22_generator
-python3 simulations/generate_films.py --formulation V35 --generator V35/v35_generator --dry-run
-python3 simulations/generate_films.py --formulation V35 --generator V35/v35_generator
+make -C simulations films-dry-run
+make -C simulations films
 ```
 
-The script selects V22 by default; `--formulation V35` selects the V35
-series and checks that the supplied generator matches. It skips cases with
+These targets inspect both elastomer series. `films-v22` and `films-v35`
+are also available separately. The film script skips cases with
 no completed bulk NPT data. It does not submit
 jobs. The film case gets a regular wall-bounded curing input and a separate
 `in.<case>.surface` / `submit.<case>.surface.sh` measurement pair. Run the
