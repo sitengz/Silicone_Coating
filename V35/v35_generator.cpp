@@ -836,6 +836,8 @@ struct OutputFiles {
     std::string surface_input_basename;
     std::string surface_submit;
     std::string surface_submit_basename;
+    std::string dependent_submit;
+    std::string dependent_submit_basename;
 };
 
 struct LjParameters {
@@ -870,6 +872,8 @@ OutputFiles output_files(const Settings& s) {
         files.surface_submit_basename = "submit." + files.case_name + ".surface.sh";
         files.surface_input = (directory / files.surface_input_basename).string();
         files.surface_submit = (directory / files.surface_submit_basename).string();
+        files.dependent_submit_basename = "submit." + files.case_name + ".chain.sh";
+        files.dependent_submit = (directory / files.dependent_submit_basename).string();
     }
     return files;
 }
@@ -1237,6 +1241,43 @@ void write_surface_submit_script(const OutputFiles& files) {
         << "srun lmp -in \"$INPUT\" > \"$OUTPUT\"\n";
     if (!out) throw std::runtime_error("Failed while writing surface submit file: " + files.surface_submit);
 }
+
+void write_dependent_submit_script(const OutputFiles& files) {
+    if (files.dependent_submit.empty()) return;
+    std::ofstream out(files.dependent_submit);
+    if (!out) throw std::runtime_error("Cannot open dependent submit file: " + files.dependent_submit);
+    out << "#!/usr/bin/env bash\n"
+        << "# Submit the film job now and the surface job after it succeeds.\n"
+        << "# This is a login-node launcher, not a Slurm batch job.\n"
+        << "set -euo pipefail\n"
+        << "cd -- \"$(dirname -- \"$0\")\"\n"
+        << "FILM_SCRIPT=" << shell_single_quote(files.submit_basename) << "\n"
+        << "SURFACE_SCRIPT=" << shell_single_quote(files.surface_submit_basename) << "\n"
+        << "for required in " << shell_single_quote(files.data_basename)
+        << " " << shell_single_quote(files.input_basename)
+        << " " << shell_single_quote(files.surface_input_basename)
+        << " \"$FILM_SCRIPT\" \"$SURFACE_SCRIPT\"; do\n"
+        << "    [[ -s $required ]] || { printf 'Missing or empty: %s\\n' \"$required\" >&2; exit 1; }\n"
+        << "done\n"
+        << "if [[ ${1-} == --dry-run ]]; then\n"
+        << "    printf 'Would submit %s, then %s with afterok dependency.\\n' \"$FILM_SCRIPT\" \"$SURFACE_SCRIPT\"\n"
+        << "    exit 0\n"
+        << "fi\n"
+        << "[[ $# -eq 0 ]] || { echo 'Usage: bash submit.<case>.chain.sh [--dry-run]' >&2; exit 2; }\n"
+        << "command -v sbatch >/dev/null || { echo 'sbatch is not available' >&2; exit 1; }\n"
+        << "film_submission=$(sbatch --parsable \"$FILM_SCRIPT\")\n"
+        << "film_id=${film_submission%%;*}\n"
+        << "[[ $film_id =~ ^[0-9]+$ ]] || { printf 'Unexpected film job ID: %s\\n' \"$film_submission\" >&2; exit 1; }\n"
+        << "printf 'Film job submitted: %s\\n' \"$film_id\"\n"
+        << "if ! surface_submission=$(sbatch --parsable --dependency=\"afterok:$film_id\" \"$SURFACE_SCRIPT\"); then\n"
+        << "    printf 'Surface submission failed; film job %s is already queued.\\n' \"$film_id\" >&2\n"
+        << "    exit 1\n"
+        << "fi\n"
+        << "surface_id=${surface_submission%%;*}\n"
+        << "[[ $surface_id =~ ^[0-9]+$ ]] || { printf 'Unexpected surface job ID: %s\\n' \"$surface_submission\" >&2; exit 1; }\n"
+        << "printf 'Surface job submitted: %s (afterok:%s)\\n' \"$surface_id\" \"$film_id\"\n";
+    if (!out) throw std::runtime_error("Failed while writing dependent submit file: " + files.dependent_submit);
+}
 void write_info(const Settings& s, const System& sys, const Box& box,
                 const OutputFiles& files) {
     std::ofstream out(files.info);
@@ -1303,6 +1344,9 @@ void write_info(const Settings& s, const System& sys, const Box& box,
     out << ",\n    \"surface_submit\": ";
     if (files.surface_submit_basename.empty()) out << "null";
     else out << '"' << json_escape(files.surface_submit_basename) << '"';
+    out << ",\n    \"dependent_submit\": ";
+    if (files.dependent_submit_basename.empty()) out << "null";
+    else out << '"' << json_escape(files.dependent_submit_basename) << '"';
     out << "\n"
         << "  },\n"
         << "  \"generator_input\": {\n"
@@ -1501,6 +1545,7 @@ int main(int argc, char** argv) {
         write_submit_script(files);
         write_surface_input(settings, files);
         write_surface_submit_script(files);
+        write_dependent_submit_script(files);
         write_info(settings, system, box, files);
         std::cerr << "Wrote model package:\n"
                   << "  " << files.data << "\n"
@@ -1509,6 +1554,7 @@ int main(int argc, char** argv) {
                   << "  " << files.info << "\n"
                   << (files.surface_input.empty() ? "" : "  " + files.surface_input + "\n")
                   << (files.surface_submit.empty() ? "" : "  " + files.surface_submit + "\n")
+                  << (files.dependent_submit.empty() ? "" : "  " + files.dependent_submit + "\n")
                   << "System: " << system.atoms.size() << " atoms, "
                   << system.bonds.size() << " bonds, " << system.angles.size() << " angles, "
                   << system.dihedrals.size() << " dihedrals; box "
