@@ -68,12 +68,27 @@ make -C simulations films
 ```
 
 These targets inspect both elastomer series. `films-v22` and `films-v35`
-are also available separately. The film script skips cases with
-no completed bulk NPT data. It does not submit
-jobs. The film case gets a regular wall-bounded curing input and a separate
-`in.<case>.surface` / `submit.<case>.surface.sh` measurement pair. Run the
-film curing job first; then run the surface job, which requires its final
-`data.<case>.npt_eq` file. Do not use the periodic bulk network as a slab.
+are also available separately. The film script skips cases with no completed
+bulk NPT data. It generates files but does **not** submit jobs. Each film
+package contains the wall-bounded curing input and a separate
+`in.<case>.surface` / `submit.<case>.surface.sh` measurement pair. It also
+contains `submit.<case>.chain.sh`, a login-node launcher that queues the
+surface job with a Slurm `afterok` dependency on the film job. For example:
+
+```bash
+bash simulations/V22/PDMS_N30_5wt/V22_PDMS_N30_5wt_film/submit.V22_PDMS_N30_5wt_film.chain.sh --dry-run
+bash simulations/V22/PDMS_N30_5wt/V22_PDMS_N30_5wt_film/submit.V22_PDMS_N30_5wt_film.chain.sh
+```
+
+The first command checks the files without submitting anything. The second
+submits both jobs and prints their IDs; it returns immediately rather than
+waiting for either simulation. Run it **once per case** from a Slurm login
+environment, after reviewing the generated inputs and resource requests.
+Running it again would submit a duplicate pair. If the film job fails, the
+surface job does not run. The surface input reads the film's final
+`data.<case>.npt_eq` file; do not use the periodic bulk network as a slab.
+Regenerating film packages with `make ... films` overwrites generated inputs
+and initial data, so do not repeat it for active or hand-edited cases.
 
 For a completed surface job, analyze its production stress file with:
 
