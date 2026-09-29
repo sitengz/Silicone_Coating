@@ -218,8 +218,12 @@ For example, `--output results/data.test_case` creates
 # Surface measurement update
 
 With `--thickness`, the generator also writes a separate
-`in.<case>.surface` and `submit.<case>.surface.sh`. Run the existing film
-curing job first. The surface job reads `data.<case>.npt_eq`, extends `z` by
+`in.<case>.surface` and `submit.<case>.surface.sh`, plus a
+`submit.<case>.chain.sh` launcher. From the film case folder, run
+`bash submit.<case>.chain.sh --dry-run` to check the package, then
+`bash submit.<case>.chain.sh` once to submit both jobs with the surface job
+dependent on successful film completion. The surface job reads
+`data.<case>.npt_eq`, extends `z` by
 50 Å on each side without scaling atoms, leaves the z walls off, relaxes
 at 300 K in NVT for 10 million steps, and records pressure during another
 10 million-step NVT run. The original bulk and wall-bounded film inputs are
