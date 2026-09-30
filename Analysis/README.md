@@ -30,8 +30,10 @@ to mN/m. `Lz` is the **whole simulation cell height including vacuum**.
 The division by two assumes two free surfaces. This result is apparent
 mechanical surface stress, not necessarily a solid's surface free energy.
 The script does not correct for residual network stress or prove
-equilibration. Compare with matched bulk stress and examine block drift,
-surface integrity, and oil distribution before drawing conclusions.
+equilibration. The surface input uses distant z guard walls; if the film or
+escaped oil reaches them, wall forces can bias the apparent stress. Compare
+with matched bulk stress and examine block drift, wall contact, surface
+integrity, and oil distribution before drawing conclusions.
 
 The phase and final-snapshot analyzers also accept the generator's balanced
 MPS allocation, in which some oil chains have one extra MPS pendant bead.
