@@ -271,12 +271,13 @@ With `--thickness`, the generator also writes a separate
 `bash submit.<case>.chain.sh` once to submit both jobs with the surface job
 dependent on successful film completion. The surface job reads
 `data.<case>.npt_eq`, extends `z` by
-50 Å on each side without scaling atoms, leaves the z walls off, relaxes
+50 Å on each side without scaling atoms, then places separate 300 K
+`wall/lj126` guard walls at the expanded lower and upper box edges. It relaxes
 at 300 K in NVT for 10 million steps, and records pressure during another
 10 million-step NVT run. The original bulk and wall-bounded film inputs are
 unchanged. See `Analysis/surface_stress.py` for the apparent mechanical
 surface-stress analysis. The surface stage should be reviewed for walltime,
-vacuum clearance, equilibration, and oil redistribution on the cluster.
+vacuum clearance, wall contact, equilibration, and oil redistribution on the cluster.
 
 `--config FILE` accepts `key = value` lines; explicit CLI options override
 file values.
