@@ -71,7 +71,9 @@ These targets inspect both elastomer series. `films-v22` and `films-v35`
 are also available separately. The film script skips cases with no completed
 bulk NPT data. It generates files but does **not** submit jobs. Each film
 package contains the wall-bounded curing input and a separate
-`in.<case>.surface` / `submit.<case>.surface.sh` measurement pair. It also
+`in.<case>.surface` / `submit.<case>.surface.sh` measurement pair. The surface
+input expands the box by 50 Å per face by default and places separate 300 K
+LJ guard walls at the new z edges. It also
 contains `submit.<case>.chain.sh`, a login-node launcher that queues the
 surface job with a Slurm `afterok` dependency on the film job. For example:
 
