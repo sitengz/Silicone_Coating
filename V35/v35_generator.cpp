@@ -142,9 +142,9 @@ void print_help(const char* program) {
         << "  --output FILE     override the automatically generated data filename\n"
         << "                    a case folder is created beside this path\n"
         << "  --config FILE     read key = value settings; CLI values override file\n"
-        << "                    film cases also get a separate wall-free surface job\n"
+        << "                    film cases also get a separate z-wall-guarded surface job\n"
         << "  --surface-padding X        vacuum per z face in A (default: 50)\n"
-        << "  --surface-relax-steps N    wall-free 300 K NVT steps (default: 10000000)\n"
+        << "  --surface-relax-steps N    surface 300 K NVT steps (default: 10000000)\n"
         << "  --surface-production-steps N  pressure-production NVT steps (default: 10000000)\n"
         << "  --surface-sample-every N   pressure sample interval in steps (default: 1000)\n"
         << "  --help             show this help\n";
@@ -1115,8 +1115,9 @@ void write_surface_input(const Settings& s, const OutputFiles& files) {
     std::ofstream out(files.surface_input);
     if (!out) throw std::runtime_error("Cannot open surface input: " + files.surface_input);
     const std::string& suffix = files.case_name;
+    const LjParameters cold = lj_parameters(300.0);
     out << std::fixed << std::setprecision(9)
-        << "# Wall-free coating surface measurement; run after the film's main job.\n"
+        << "# Coating surface measurement with distant z guard walls; run after the film's main job.\n"
         << "# The cured film is NOT made by cutting a periodic bulk network.\n"
         << "units           real\n"
         << "boundary        p p f\n"
@@ -1145,9 +1146,13 @@ void write_surface_input(const Settings& s, const OutputFiles& files) {
         << "neigh_modify    delay 5 every 1\n"
         << "timestep        5\n"
         << "# Expand into vacuum without remapping or scaling atom positions.\n"
-        << "# No z wall fix is present in this independent measurement job.\n"
         << "change_box      all z delta -" << s.surface_padding << ' '
         << s.surface_padding << " units box\n"
+        << "# Keep atoms inside the expanded box with separate lower and upper LJ walls.\n"
+        << "fix             zlo_wall all wall/lj126 zlo EDGE "
+        << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n"
+        << "fix             zhi_wall all wall/lj126 zhi EDGE "
+        << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n"
         << "thermo          10000\n"
         << "thermo_style    custom step time temp pe pxx pyy pzz lx ly lz\n"
         << "thermo_modify   lost error format float %.12g\n"
@@ -1490,6 +1495,7 @@ void write_info(const Settings& s, const System& sys, const Box& box,
     else out << "null";
     out << ",\n"
         << "      \"vacuum_padding_per_face_angstrom\": " << s.surface_padding << ",\n"
+        << "      \"z_guard_walls\": {\"style\": \"wall/lj126\", \"locations\": [\"zlo EDGE\", \"zhi EDGE\"], \"epsilon_kcal_per_mol\": " << cold.epsilon << ", \"sigma_angstrom\": " << cold.sigma << ", \"cutoff_angstrom\": " << cold.cutoff << "},\n"
         << "      \"ensemble\": \"NVT\",\n"
         << "      \"temperature_K\": 300.0,\n"
         << "      \"relaxation_steps\": " << s.surface_relax_steps << ",\n"
