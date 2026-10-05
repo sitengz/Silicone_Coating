@@ -33,4 +33,4 @@ test:
 	$(PYTHON) -m unittest discover -s Analysis -p 'test_*.py' -v
 
 help:
-	@printf '%s\n' 'make                 Build all generators and C++ analyzers in build/' 'make generators      Build V22, V35, and Oil generators' 'make analyzers       Build the four C++ analyzers' 'make test            Run Python analyzer tests' 'make -C simulations  Generate all 28 bulk case packages' 'make -C simulations films  Generate films after bulk NPT runs'
+	@printf '%s\n' 'make                 Build all generators and C++ analyzers in build/' 'make generators      Build V22, V35, and Oil generators' 'make analyzers       Build the four C++ analyzers' 'make test            Run Python analyzer tests' 'make -C simulations  Generate all 30 bulk case packages' 'make -C simulations films  Generate films after bulk NPT runs'

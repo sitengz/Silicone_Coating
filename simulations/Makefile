@@ -49,4 +49,4 @@ films-dry-run: $(ROOT)/build/v22_generator $(ROOT)/build/v35_generator
 	cd $(ROOT) && $(PYTHON) simulations/generate_films.py --formulation V35 --generator build/v35_generator --dry-run
 
 help:
-	@printf '%s\n' 'make -C simulations                Generate all 28 bulk case packages' 'make -C simulations bulk-v22       Generate only the 14 V22 bulk packages' 'make -C simulations bulk-v35       Generate only the 14 V35 bulk packages' 'make -C simulations films-dry-run  Show films possible from completed bulk NPT data' 'make -C simulations films          Generate eligible V22 and V35 films (no submission)'
+	@printf '%s\n' 'make -C simulations                Generate all 30 bulk case packages' 'make -C simulations bulk-v22       Generate only the 15 V22 bulk packages' 'make -C simulations bulk-v35       Generate only the 15 V35 bulk packages' 'make -C simulations films-dry-run  Show films possible from completed bulk NPT data' 'make -C simulations films          Generate eligible V22 and V35 films (no submission)'

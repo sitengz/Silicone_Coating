@@ -1,8 +1,9 @@
-# V22/V35 coating series: seven oils × two loadings × two elastomers
+# V22/V35 coating series: seven oils × two loadings × two elastomers, plus no-oil controls
 
-The 14 case folders under `V22/` contain V22 configurations, and the
-14 folders under `V35/` contain V35 configurations, for 5 and 10 wt% of
-each of the seven oils in the separate Silicone_Oil repository's numbered
+The 15 case folders under `V22/` contain V22 configurations, and the
+15 folders under `V35/` contain V35 configurations. Fourteen per formulation
+use 5 or 10 wt% of each of the seven oils in the separate Silicone_Oil
+repository's numbered
 `simulations/01`–`07` series. Only the oil **chemistry, chain length, and MPS
 repeat fraction** are transferred. The oil-only chain counts (which target
 100,000 oil repeats in a pure-oil system) are not used: the V22 generator
@@ -25,12 +26,19 @@ number of chains with one extra, and the realized mol%.
 `MPS5mol` denotes the MPS repeat-unit mole percentage; the final `5wt` or
 `10wt` denotes the oil loading in the complete coating formulation.
 
-Each `V22/*/model.conf` fixes the V22 base (`N1=128`, `M1=900`, functionality 8),
-the oil identity, chain length, MPS fraction, and requested oil wt%. These
-values can be overridden on the generator command line. The generated `.info`
-file records the actual integer chain count and realized weight percentage.
-The `V35/*/model.conf` files instead fix `N1=384`, `M1=306`, and
-functionality 4; all seven oil definitions and loadings are identical.
+`NoOil_0wt` is the oil-free elastomer control under each formulation. These
+configs retain the normal network strands, crosslinkers, and star moderators;
+only component 3 is absent (`N3=0`, `M3=0`). They do not specify `oil`,
+`oil_length`, or `oil_wt`, because omission is how the generators select no oil.
+The generated cases are `V22_NoOil_0wt` and `V35_NoOil_0wt`.
+
+Each `V22/*/model.conf` fixes the V22 base (`N1=128`, `M1=900`, functionality 8).
+The oil-bearing configs additionally set oil identity, chain length, MPS
+fraction, and requested oil wt%. Values can be overridden on the generator
+command line. The generated `.info` records the actual integer oil chain count
+and realized weight percentage. The `V35/*/model.conf` files instead fix
+`N1=384`, `M1=306`, and functionality 4; the oil definitions and loadings
+are otherwise identical.
 
 From the repository root, compile and generate one bulk case:
 
@@ -40,8 +48,15 @@ make generators
 ./build/v35_generator --config simulations/V35/Copol_N179_MPS5mol_5wt/model.conf
 ```
 
+For the two oil-free controls, use:
+
+```bash
+./build/v22_generator --config simulations/V22/NoOil_0wt/model.conf
+./build/v35_generator --config simulations/V35/NoOil_0wt/model.conf
+```
+
 To build every C++ generator and analyzer, run `make` at the repository root.
-To generate all 28 bulk packages from the committed configs, run
+To generate all 30 bulk packages from the committed configs, run
 `make -C simulations`. Use `make -C simulations bulk-v22` or `bulk-v35`
 for only one elastomer series. Make skips packages whose `.info` is newer
 than their config and generator; `make -B -C simulations bulk` forces a

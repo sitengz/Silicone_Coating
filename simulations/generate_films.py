@@ -51,8 +51,8 @@ def main() -> None:
         raise ValueError(f"{generator} is not a {args.formulation} generator")
     series_root = ROOT / "simulations" / args.formulation
     configs = sorted(series_root.glob("*_*wt/model.conf"))
-    if len(configs) != 14:
-        raise ValueError(f"Expected 14 configs, found {len(configs)}")
+    if len(configs) != 15:
+        raise ValueError(f"Expected 15 configs, found {len(configs)}")
     missing = []
     for config in configs:
         output = config_output(config)

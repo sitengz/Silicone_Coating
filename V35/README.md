@@ -281,7 +281,7 @@ vacuum clearance, wall contact, equilibration, and oil redistribution on the clu
 
 `--config FILE` accepts `key = value` lines; explicit CLI options override
 file values.
-The 14 V35 oil-coating configs are documented in `simulations/README.md`
+The 14 V35 oil-coating configs and one no-oil control are documented in `simulations/README.md`
 and stored under `simulations/V35/`.
 For copolymer oils, `--mps-distribution balanced` distributes fractional MPS
 composition across chains; the default `fixed` retains the earlier
