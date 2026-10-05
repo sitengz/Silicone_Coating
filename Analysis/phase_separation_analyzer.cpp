@@ -65,6 +65,8 @@ struct ModelInfo {
     std::string oil_model;
     long long dms_repeats_per_chain = 0;
     long long mps_repeats_per_chain = 0;
+    long long total_mps_repeats = 0;
+    long long chains_with_extra_mps = 0;
     long long oil_chain_count = 0;
     double timestep_fs = 0.0;
     long long production_steps = 0;
@@ -372,6 +374,15 @@ ModelInfo parse_model_info(const std::string &path) {
     info.mps_repeats_per_chain =
         json_integer(oil, "mps_repeats_per_chain");
     info.oil_chain_count = json_integer(oil, "chain_count");
+    info.total_mps_repeats = oil.find("\"total_mps_repeats\"") != std::string::npos
+        ? json_integer(oil, "total_mps_repeats")
+        : info.oil_chain_count * info.mps_repeats_per_chain;
+    if (oil.find("\"chains_with_extra_mps\"") != std::string::npos)
+        info.chains_with_extra_mps = json_integer(oil, "chains_with_extra_mps");
+    if (info.total_mps_repeats !=
+        info.oil_chain_count * info.mps_repeats_per_chain +
+        info.chains_with_extra_mps)
+        throw std::runtime_error("silicone-oil MPS totals are inconsistent");
     if (info.oil_chain_count != info.components[kFiller].molecules) {
         throw std::runtime_error(
             "silicone-oil chain count does not match filler component");
@@ -733,8 +744,7 @@ bool read_frame(
     const std::size_t z_column = required_column(columns, "z");
 
     const auto ends = component_ends(info);
-    const long long expected_mps =
-        info.oil_chain_count * info.mps_repeats_per_chain;
+    const long long expected_mps = info.total_mps_repeats;
     const long long expected_dms = info.total_beads - 2 * expected_mps;
     frame.mps.reserve(static_cast<std::size_t>(expected_mps));
     frame.dms.reserve(static_cast<std::size_t>(expected_dms));
@@ -816,8 +826,7 @@ Frame read_data_snapshot(
     long long atoms_read = 0;
     std::vector<unsigned char> seen;
     const auto ends = component_ends(info);
-    const long long expected_mps =
-        info.oil_chain_count * info.mps_repeats_per_chain;
+    const long long expected_mps = info.total_mps_repeats;
     const long long expected_dms = info.total_beads - 2 * expected_mps;
     frame.mps.reserve(static_cast<std::size_t>(expected_mps));
     frame.dms.reserve(static_cast<std::size_t>(expected_dms));
@@ -1660,6 +1669,8 @@ void write_report(
            << "Type-5 pendant treatment    : validated, not counted a second time\n"
            << "DMS repeats/oil chain       : " << info.dms_repeats_per_chain << "\n"
            << "MPS repeats/oil chain       : " << info.mps_repeats_per_chain << "\n"
+           << "Chains with one extra MPS   : " << info.chains_with_extra_mps << "\n"
+           << "Total oil MPS repeats       : " << info.total_mps_repeats << "\n"
            << "Oil chains                  : " << info.oil_chain_count << "\n"
            << "Global MPS marker fraction  : " << last.mps_fraction << "\n\n";
     if (trajectory_mode) {
@@ -1777,7 +1788,7 @@ int main(int argc, char **argv) {
     try {
         Options options = parse_options(argc, argv);
         const ModelInfo info = parse_model_info(options.info_file);
-        if (info.mps_repeats_per_chain <= 0 ||
+        if (info.total_mps_repeats <= 0 ||
             info.oil_chain_count <= 0) {
             throw std::runtime_error(
                 "phase analysis requires a PMPS-containing oil system");

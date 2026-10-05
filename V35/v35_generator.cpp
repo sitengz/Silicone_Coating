@@ -39,6 +39,10 @@ constexpr long long kMsdProductionSteps = 1000000;
 constexpr int kMsdDumpEverySteps = 1000;
 constexpr long long kMsdExpectedFrames =
     kMsdProductionSteps / kMsdDumpEverySteps + 1;
+constexpr long long kSurfaceRelaxSteps = 10000000;
+constexpr long long kSurfaceProductionSteps = 10000000;
+constexpr int kSurfaceSampleEverySteps = 1000;
+constexpr double kSurfacePaddingAngstrom = 50.0;
 constexpr double kCrosslinkCreationProbability =
     SILICONE_CROSSLINK_PROBABILITY;
 
@@ -69,9 +73,16 @@ struct Settings {
     bool sequence_explicit = false;
     std::string sequence = "random";
     int mps_per_chain = 0;
+    int chains_with_extra_mps = 0;
+    long long total_mps_repeats = 0;
+    std::string mps_distribution = "fixed";
     std::uint32_t oil_seed = 20260727u;
     double oil_minimum_separation = 4.5;
     std::string config_file;
+    double surface_padding = kSurfacePaddingAngstrom;
+    int surface_relax_steps = static_cast<int>(kSurfaceRelaxSteps);
+    int surface_production_steps = static_cast<int>(kSurfaceProductionSteps);
+    int surface_sample_every = kSurfaceSampleEverySteps;
 };
 
 struct Atom { int id, molecule, type; double charge, x, y, z; };
@@ -111,6 +122,7 @@ void print_help(const char* program) {
         << "  --oil-wt X        oil weight percent of complete formulation; required\n"
         << "  --mps-percent X   MPS repeat-unit percentage for copolymer oil\n"
         << "  --mps-wt X        MPS repeat-unit weight percentage for copolymer oil\n"
+        << "  --mps-distribution MODE  fixed (legacy) or balanced across chains\n"
         << "  --sequence MODE   random, alternating, or block (default: random)\n"
         << "  --oil-seed N      oil sequence/conformation/packing seed (default: 20260727)\n"
         << "  --oil-min-separation X  minimum oil/moderator-to-other distance in A"
@@ -130,55 +142,65 @@ void print_help(const char* program) {
         << "  --output FILE     override the automatically generated data filename\n"
         << "                    a case folder is created beside this path\n"
         << "  --config FILE     read key = value settings; CLI values override file\n"
+        << "                    film cases also get a separate z-wall-guarded surface job\n"
+        << "  --surface-padding X        vacuum per z face in A (default: 50)\n"
+        << "  --surface-relax-steps N    surface 300 K NVT steps (default: 10000000)\n"
+        << "  --surface-production-steps N  pressure-production NVT steps (default: 10000000)\n"
+        << "  --surface-sample-every N   pressure sample interval in steps (default: 1000)\n"
         << "  --help             show this help\n";
 }
 
 void apply_option(Settings& s, const std::string& option,
                   const std::string& value) {
-    if      (option == "--n1") s.n1 = parse_int(value, option);
-    else if (option == "--m1") s.m1 = parse_int(value, option);
-    else if (option == "--n2") s.n2 = parse_int(value, option);
-    else if (option == "--m2")
-        throw std::runtime_error("M2 is determined by M2=2*M1/functionality; do not supply --m2");
-    else if (option == "--n3" || option == "--m3" ||
-             option == "--filler-length" || option == "--filler-wt")
-        throw std::runtime_error(
-            option + " is obsolete; use --oil, --oil-length, and --oil-wt");
-    else if (option == "--n4") s.n4 = parse_int(value, option);
-    else if (option == "--m4") s.m4 = parse_int(value, option);
-    else if (option == "--oil") { s.oil = value; s.oil_explicit = true; }
-    else if (option == "--oil-length") {
-        s.n3 = parse_int(value, option);
-        s.oil_length_explicit = true;
-    }
-    else if (option == "--oil-wt") {
-        s.oil_weight_percent = parse_double(value, option);
-        s.oil_weight_explicit = true;
-    }
-    else if (option == "--mps-percent")
-        s.mps_monomer_percent = parse_double(value, option);
-    else if (option == "--mps-wt")
-        s.mps_weight_percent = parse_double(value, option);
-    else if (option == "--sequence") {
-        s.sequence = value;
-        s.sequence_explicit = true;
-    }
-    else if (option == "--oil-seed")
-        s.oil_seed = static_cast<std::uint32_t>(parse_int(value, option));
-    else if (option == "--oil-min-separation")
-        s.oil_minimum_separation = parse_double(value, option);
-    else if (option == "--functionality") s.crosslinker_functionality = parse_int(value, option);
-    else if (option == "--crosslink-distribution") s.crosslink_distribution = value;
-    else if (option == "--crosslink-seed") s.crosslink_seed = static_cast<std::uint32_t>(parse_int(value, option));
-    else if (option == "--mass") s.bead_mass = parse_double(value, option);
-    else if (option == "--density") s.density = parse_double(value, option);
-    else if (option == "--target-density") s.target_density = parse_double(value, option);
-    else if (option == "--bond-length") s.bond_length = parse_double(value, option);
-    else if (option == "--spacing") s.spacing = parse_double(value, option);
-    else if (option == "--thickness") s.thickness = parse_double(value, option);
-    else if (option == "--seed") s.seed = static_cast<std::uint32_t>(parse_int(value, option));
-    else if (option == "--output") { s.output = value; s.output_explicit = true; }
-    else throw std::runtime_error("Unknown option: " + option);
+        if      (option == "--n1") s.n1 = parse_int(value, option);
+        else if (option == "--m1") s.m1 = parse_int(value, option);
+        else if (option == "--n2") s.n2 = parse_int(value, option);
+        else if (option == "--m2")
+            throw std::runtime_error("M2 is determined by M2=2*M1/functionality; do not supply --m2");
+        else if (option == "--n3" || option == "--m3" ||
+                 option == "--filler-length" || option == "--filler-wt")
+            throw std::runtime_error(
+                option + " is obsolete; use --oil, --oil-length, and --oil-wt");
+        else if (option == "--n4") s.n4 = parse_int(value, option);
+        else if (option == "--m4") s.m4 = parse_int(value, option);
+        else if (option == "--oil") { s.oil = value; s.oil_explicit = true; }
+        else if (option == "--oil-length") {
+            s.n3 = parse_int(value, option);
+            s.oil_length_explicit = true;
+        }
+        else if (option == "--oil-wt") {
+            s.oil_weight_percent = parse_double(value, option);
+            s.oil_weight_explicit = true;
+        }
+        else if (option == "--mps-percent")
+            s.mps_monomer_percent = parse_double(value, option);
+        else if (option == "--mps-wt")
+            s.mps_weight_percent = parse_double(value, option);
+        else if (option == "--mps-distribution") s.mps_distribution = value;
+        else if (option == "--sequence") {
+            s.sequence = value;
+            s.sequence_explicit = true;
+        }
+        else if (option == "--oil-seed")
+            s.oil_seed = static_cast<std::uint32_t>(parse_int(value, option));
+        else if (option == "--oil-min-separation")
+            s.oil_minimum_separation = parse_double(value, option);
+        else if (option == "--functionality") s.crosslinker_functionality = parse_int(value, option);
+        else if (option == "--crosslink-distribution") s.crosslink_distribution = value;
+        else if (option == "--crosslink-seed") s.crosslink_seed = static_cast<std::uint32_t>(parse_int(value, option));
+        else if (option == "--mass") s.bead_mass = parse_double(value, option);
+        else if (option == "--density") s.density = parse_double(value, option);
+        else if (option == "--target-density") s.target_density = parse_double(value, option);
+        else if (option == "--bond-length") s.bond_length = parse_double(value, option);
+        else if (option == "--spacing") s.spacing = parse_double(value, option);
+        else if (option == "--thickness") s.thickness = parse_double(value, option);
+        else if (option == "--surface-padding") s.surface_padding = parse_double(value, option);
+        else if (option == "--surface-relax-steps") s.surface_relax_steps = parse_int(value, option);
+        else if (option == "--surface-production-steps") s.surface_production_steps = parse_int(value, option);
+        else if (option == "--surface-sample-every") s.surface_sample_every = parse_int(value, option);
+        else if (option == "--seed") s.seed = static_cast<std::uint32_t>(parse_int(value, option));
+        else if (option == "--output") { s.output = value; s.output_explicit = true; }
+        else throw std::runtime_error("Unknown option: " + option);
 }
 
 Settings parse_args(int argc, char** argv) {
@@ -203,11 +225,13 @@ std::string filename_number(double value) {
 }
 
 double oil_chain_mass(const Settings& s) {
-    return silicone_oil::chain_mass(s.n3, s.mps_per_chain, s.bead_mass);
+    if (s.m3 == 0) return silicone_oil::chain_mass(s.n3, s.mps_per_chain, s.bead_mass);
+    return ((1LL * s.m3 * s.n3 - s.total_mps_repeats) * s.bead_mass +
+            s.total_mps_repeats * silicone_oil::kMpsRepeatMass) / s.m3;
 }
 
 long long oil_beads(const Settings& s) {
-    return 1LL * s.m3 * (s.n3 + s.mps_per_chain);
+    return 1LL * s.m3 * s.n3 + s.total_mps_repeats;
 }
 
 std::string oil_name(const Settings& s) {
@@ -236,6 +260,10 @@ void resolve_oil_composition(Settings& s) {
     }
     if (s.oil != "pdms" && s.oil != "pmps" && s.oil != "copolymer")
         throw std::runtime_error("--oil must be pdms, pmps, or copolymer");
+    if (s.mps_distribution != "fixed" && s.mps_distribution != "balanced")
+        throw std::runtime_error("--mps-distribution must be fixed or balanced");
+    if (s.oil != "copolymer" && s.mps_distribution != "fixed")
+        throw std::runtime_error("--mps-distribution balanced requires --oil copolymer");
     if (!s.oil_length_explicit || !s.oil_weight_explicit)
         throw std::runtime_error(
             "--oil requires both --oil-length and --oil-wt");
@@ -252,17 +280,18 @@ void resolve_oil_composition(Settings& s) {
     if (s.mps_monomer_percent >= 0.0 && s.mps_weight_percent >= 0.0)
         throw std::runtime_error("--mps-percent and --mps-wt are mutually exclusive");
 
+    double requested_mps = 0.0;
     if (s.oil == "pdms" || s.oil == "pmps") {
         if (s.mps_monomer_percent >= 0.0 || s.mps_weight_percent >= 0.0 ||
             s.sequence_explicit)
             throw std::runtime_error(
                 "MPS composition and sequence options are only valid with --oil copolymer");
         s.mps_per_chain = s.oil == "pdms" ? 0 : s.n3;
+        requested_mps = s.mps_per_chain;
     } else {
         if (s.mps_monomer_percent < 0.0 && s.mps_weight_percent < 0.0)
             throw std::runtime_error(
                 "--oil copolymer requires --mps-percent or --mps-wt");
-        double requested_mps = 0.0;
         if (s.mps_weight_percent >= 0.0) {
             if (s.mps_weight_percent <= 0.0 || s.mps_weight_percent >= 100.0)
                 throw std::runtime_error("--mps-wt must be greater than 0 and less than 100");
@@ -280,10 +309,11 @@ void resolve_oil_composition(Settings& s) {
             requested_mps =
                 s.n3 * s.mps_monomer_percent / 100.0;
         }
-        s.mps_per_chain = std::max(
-            1, std::min(s.n3 - 1, static_cast<int>(std::lround(requested_mps))));
         if (s.n3 < 2)
             throw std::runtime_error("Copolymer oil requires --oil-length of at least 2");
+        if (s.mps_distribution == "fixed")
+            s.mps_per_chain = std::max(
+                1, std::min(s.n3 - 1, static_cast<int>(std::lround(requested_mps))));
     }
 
     const long long base_beads =
@@ -291,15 +321,34 @@ void resolve_oil_composition(Settings& s) {
     const double base_mass = base_beads * s.bead_mass;
     const double fraction = s.oil_weight_percent / 100.0;
     const double desired_oil_mass = base_mass * fraction / (1.0 - fraction);
+    const double estimated_mps = s.mps_distribution == "balanced"
+        ? requested_mps : static_cast<double>(s.mps_per_chain);
+    const double estimated_chain_mass =
+        (s.n3 - estimated_mps) * s.bead_mass +
+        estimated_mps * silicone_oil::kMpsRepeatMass;
     s.m3 = std::max(
-        1, static_cast<int>(std::lround(desired_oil_mass / oil_chain_mass(s))));
+        1, static_cast<int>(std::lround(desired_oil_mass / estimated_chain_mass)));
+    if (s.mps_distribution == "balanced") {
+        s.total_mps_repeats = std::max(
+            0LL, std::min(1LL * s.n3 * s.m3,
+                static_cast<long long>(std::llround(requested_mps * s.m3))));
+        s.mps_per_chain = static_cast<int>(s.total_mps_repeats / s.m3);
+        s.chains_with_extra_mps = static_cast<int>(s.total_mps_repeats % s.m3);
+    } else {
+        s.total_mps_repeats = 1LL * s.m3 * s.mps_per_chain;
+    }
 
     if (!s.output_explicit) {
         s.output = std::string("data.") + kFormulationName + '_' +
             oil_name(s) + "_N" + std::to_string(s.n3);
         if (s.oil == "copolymer") {
-            s.output += "_MPS" + std::to_string(s.mps_per_chain) + "of" +
-                        std::to_string(s.n3) + '_' + s.sequence;
+            if (s.mps_distribution == "balanced")
+                s.output += "_MPS" + filename_number(
+                    s.mps_weight_percent >= 0.0 ? s.mps_weight_percent : s.mps_monomer_percent) +
+                    (s.mps_weight_percent >= 0.0 ? "wt" : "mol") + "_balanced_" + s.sequence;
+            else
+                s.output += "_MPS" + std::to_string(s.mps_per_chain) + "of" +
+                            std::to_string(s.n3) + '_' + s.sequence;
         }
         s.output += "_" + filename_number(s.oil_weight_percent) + "wt";
     }
@@ -360,8 +409,8 @@ void report_composition(const Settings& s) {
                   << ", realized wt%=" << realized;
         if (i == 2 && s.oil != "none")
             std::cerr << ", oil=" << s.oil
-                      << ", DMS/MPS repeats=" << s.n3 - s.mps_per_chain
-                      << '/' << s.mps_per_chain
+                      << ", MPS repeats/chain=" << s.mps_per_chain
+                      << (s.chains_with_extra_mps ? " or " + std::to_string(s.mps_per_chain + 1) : "")
                       << ", requested oil wt%=" << s.oil_weight_percent;
         std::cerr << '\n';
     }
@@ -386,6 +435,10 @@ void validate(const Settings& s) {
         throw std::runtime_error("Mass, densities, bond length, and spacing must be positive");
     if (s.thickness == 0.0)
         throw std::runtime_error("--thickness must be positive; omit it for the cubic bulk system");
+    if (!std::isfinite(s.surface_padding) || s.surface_padding <= 15.0 ||
+        s.surface_relax_steps <= 0 || s.surface_production_steps <= 0 ||
+        s.surface_sample_every <= 0)
+        throw std::runtime_error("Surface padding must exceed the 15 A pair cutoff and surface step counts must be positive");
     const long long total_beads =
         1LL*s.n1*s.m1 + 1LL*s.n2*s.m2 + oil_beads(s) + 1LL*s.n4*s.m4;
     if (total_beads <= 0) throw std::runtime_error("The formulation must contain at least one bead");
@@ -659,6 +712,7 @@ void add_silicone_oil(System& sys, const Settings& s, const Box& box) {
     oil.length = s.n3;
     oil.chains = s.m3;
     oil.mps_per_chain = s.mps_per_chain;
+    oil.chains_with_extra_mps = s.chains_with_extra_mps;
     oil.sequence = s.sequence;
     oil.seed = s.oil_seed;
     oil.minimum_separation = s.oil_minimum_separation;
@@ -778,6 +832,12 @@ struct OutputFiles {
     std::string info;
     std::string info_basename;
     std::string case_name;
+    std::string surface_input;
+    std::string surface_input_basename;
+    std::string surface_submit;
+    std::string surface_submit_basename;
+    std::string dependent_submit;
+    std::string dependent_submit_basename;
 };
 
 struct LjParameters {
@@ -807,6 +867,14 @@ OutputFiles output_files(const Settings& s) {
     files.input = (directory / files.input_basename).string();
     files.submit = (directory / files.submit_basename).string();
     files.info = (directory / files.info_basename).string();
+    if (s.thickness > 0.0) {
+        files.surface_input_basename = "in." + files.case_name + ".surface";
+        files.surface_submit_basename = "submit." + files.case_name + ".surface.sh";
+        files.surface_input = (directory / files.surface_input_basename).string();
+        files.surface_submit = (directory / files.surface_submit_basename).string();
+        files.dependent_submit_basename = "submit." + files.case_name + ".chain.sh";
+        files.dependent_submit = (directory / files.dependent_submit_basename).string();
+    }
     return files;
 }
 
@@ -1042,6 +1110,86 @@ void write_lammps_input(const Settings& s, const OutputFiles& files) {
     if (!out) throw std::runtime_error("Failed while writing LAMMPS input file: " + files.input);
 }
 
+void write_surface_input(const Settings& s, const OutputFiles& files) {
+    if (files.surface_input.empty()) return;
+    std::ofstream out(files.surface_input);
+    if (!out) throw std::runtime_error("Cannot open surface input: " + files.surface_input);
+    const std::string& suffix = files.case_name;
+    const LjParameters cold = lj_parameters(300.0);
+    out << std::fixed << std::setprecision(9)
+        << "# Coating surface measurement with distant z guard walls; run after the film's main job.\n"
+        << "# The cured film is NOT made by cutting a periodic bulk network.\n"
+        << "units           real\n"
+        << "boundary        p p f\n"
+        << "atom_style      full\n"
+        << "bond_style      harmonic\n"
+        << "angle_style     hybrid harmonic quartic\n"
+        << "dihedral_style  nharmonic\n"
+        << "special_bonds   lj 0 0 0.5\n"
+        << "pair_style      lj/gromacs 12 15\n"
+        << "comm_modify     cutoff 15\n"
+        << "read_data       data." << suffix << ".npt_eq\n\n"
+        << "bond_coeff      1 115.4086 2.801\n"
+        << "bond_coeff      2 115.4086 2.801\n"
+        << "bond_coeff      3 108.3835 2.8039\n"
+        << "bond_coeff      4 232.8302 3.12497\n"
+        << "angle_coeff     1 harmonic 64.62431 111.623\n"
+        << "angle_coeff     2 quartic 110.566 64.3974 -139.5241 80.974\n"
+        << "angle_coeff     3 quartic 110.746 -20.8906 23.3707 180.3228\n"
+        << "dihedral_coeff  1 4 3.280141429 -0.59019769 1.991530534 3.31026047\n"
+        << "dihedral_coeff  2 8 1.3730 0.2686 0.4017 -1.7250 -0.7052 4.1390 0.2327 -2.2635\n"
+        << "dihedral_coeff  3 8 2.3494 -1.5840 -1.6463 3.2133 4.1479 -2.8795 -2.2665 1.1811\n"
+        << "dihedral_coeff  4 8 2.23125 0.24735 2.4327 -2.8832 -4.7124 7.17825 2.33495 -3.74\n";
+    silicone_oil::write_pair_matrix(out, 300.0, false);
+    out << "\n"
+        << "neighbor        2 bin\n"
+        << "neigh_modify    delay 5 every 1\n"
+        << "timestep        5\n"
+        << "# Expand into vacuum without remapping or scaling atom positions.\n"
+        << "change_box      all z delta -" << s.surface_padding << ' '
+        << s.surface_padding << " units box\n"
+        << "# Keep atoms inside the expanded box with separate lower and upper LJ walls.\n"
+        << "fix             zlo_wall all wall/lj126 zlo EDGE "
+        << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n"
+        << "fix             zhi_wall all wall/lj126 zhi EDGE "
+        << cold.epsilon << ' ' << cold.sigma << ' ' << cold.cutoff << " units box\n"
+        << "thermo          10000\n"
+        << "thermo_style    custom step time temp pe pxx pyy pzz lx ly lz\n"
+        << "thermo_modify   lost error format float %.12g\n"
+        << "variable        surface_time equal time\n"
+        << "variable        surface_temp equal temp\n"
+        << "variable        surface_pe equal pe\n"
+        << "variable        surface_pxx equal pxx\n"
+        << "variable        surface_pyy equal pyy\n"
+        << "variable        surface_pzz equal pzz\n"
+        << "variable        surface_lx equal lx\n"
+        << "variable        surface_ly equal ly\n"
+        << "variable        surface_lz equal lz\n"
+        << "reset_timestep  0\n"
+        << "fix             integrate all nvt temp 300.0 300.0 50.0\n"
+        << "fix             surface_eq all print " << s.surface_sample_every
+        << " \"${surface_time} ${surface_temp} ${surface_pe} ${surface_pxx} ${surface_pyy} "
+           "${surface_pzz} ${surface_lx} ${surface_ly} ${surface_lz}\" file stress."
+        << suffix << ".surface_eq.dat screen no title \"# time_fs temp_K pe_kcal_per_mol "
+           "pxx_atm pyy_atm pzz_atm lx_A ly_A lz_A\"\n"
+        << "run             " << s.surface_relax_steps << "\n"
+        << "unfix           surface_eq\n"
+        << "unfix           integrate\n"
+        << "write_data      data." << suffix << ".surface_eq nocoeff\n"
+        << "reset_timestep  0\n"
+        << "fix             integrate all nvt temp 300.0 300.0 50.0\n"
+        << "fix             surface_prod all print " << s.surface_sample_every
+        << " \"${surface_time} ${surface_temp} ${surface_pe} ${surface_pxx} ${surface_pyy} "
+           "${surface_pzz} ${surface_lx} ${surface_ly} ${surface_lz}\" file stress."
+        << suffix << ".surface.dat screen no title \"# time_fs temp_K pe_kcal_per_mol "
+           "pxx_atm pyy_atm pzz_atm lx_A ly_A lz_A\"\n"
+        << "run             " << s.surface_production_steps << "\n"
+        << "unfix           surface_prod\n"
+        << "unfix           integrate\n"
+        << "write_data      data." << suffix << ".surface_final nocoeff\n";
+    if (!out) throw std::runtime_error("Failed while writing surface input: " + files.surface_input);
+}
+
 void write_submit_script(const OutputFiles& files) {
     std::ofstream out(files.submit);
     if (!out) throw std::runtime_error("Cannot open Slurm submit file: " + files.submit);
@@ -1069,6 +1217,72 @@ void write_submit_script(const OutputFiles& files) {
     if (!out) throw std::runtime_error("Failed while writing Slurm submit file: " + files.submit);
 }
 
+void write_surface_submit_script(const OutputFiles& files) {
+    if (files.surface_submit.empty()) return;
+    std::ofstream out(files.surface_submit);
+    if (!out) throw std::runtime_error("Cannot open surface submit file: " + files.surface_submit);
+    out << "#!/bin/bash\n"
+        << "#SBATCH --job-name=" << sanitize_job_name(files.case_name) << "_surface\n"
+        << "#SBATCH --time=48:00:00\n"
+        << "#SBATCH --nodes=1\n"
+        << "#SBATCH --ntasks-per-node=96\n"
+        << "#SBATCH --mem=200G\n"
+        << "#SBATCH --partition=nova\n"
+        << "#SBATCH --mail-user=siteng@iastate.edu\n"
+        << "#SBATCH --mail-type=END,FAIL\n"
+        << "#SBATCH --output=slurm-%j.surface.out\n"
+        << "#SBATCH --error=slurm-%j.surface.err\n\n"
+        << "set -euo pipefail\n"
+        << "cd -- \"${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}\"\n"
+        << "test -s " << shell_single_quote("data." + files.case_name + ".npt_eq")
+        << " || { echo 'Run the film curing job first' >&2; exit 1; }\n"
+        << "module purge\n"
+        << "module load intel/22.3.1\n"
+        << "module load mpi/2021.7.1\n"
+        << "module load lammps/20230802.2-py310-openmpi4-ezoqd7f\n"
+        << "export OMP_NUM_THREADS=1\n"
+        << "INPUT=" << shell_single_quote(files.surface_input_basename) << "\n"
+        << "OUTPUT=" << shell_single_quote("out." + files.case_name + ".surface") << "\n"
+        << "srun lmp -in \"$INPUT\" > \"$OUTPUT\"\n";
+    if (!out) throw std::runtime_error("Failed while writing surface submit file: " + files.surface_submit);
+}
+
+void write_dependent_submit_script(const OutputFiles& files) {
+    if (files.dependent_submit.empty()) return;
+    std::ofstream out(files.dependent_submit);
+    if (!out) throw std::runtime_error("Cannot open dependent submit file: " + files.dependent_submit);
+    out << "#!/usr/bin/env bash\n"
+        << "# Submit the film job now and the surface job after it succeeds.\n"
+        << "# This is a login-node launcher, not a Slurm batch job.\n"
+        << "set -euo pipefail\n"
+        << "cd -- \"$(dirname -- \"$0\")\"\n"
+        << "FILM_SCRIPT=" << shell_single_quote(files.submit_basename) << "\n"
+        << "SURFACE_SCRIPT=" << shell_single_quote(files.surface_submit_basename) << "\n"
+        << "for required in " << shell_single_quote(files.data_basename)
+        << " " << shell_single_quote(files.input_basename)
+        << " " << shell_single_quote(files.surface_input_basename)
+        << " \"$FILM_SCRIPT\" \"$SURFACE_SCRIPT\"; do\n"
+        << "    [[ -s $required ]] || { printf 'Missing or empty: %s\\n' \"$required\" >&2; exit 1; }\n"
+        << "done\n"
+        << "if [[ ${1-} == --dry-run ]]; then\n"
+        << "    printf 'Would submit %s, then %s with afterok dependency.\\n' \"$FILM_SCRIPT\" \"$SURFACE_SCRIPT\"\n"
+        << "    exit 0\n"
+        << "fi\n"
+        << "[[ $# -eq 0 ]] || { echo 'Usage: bash submit.<case>.chain.sh [--dry-run]' >&2; exit 2; }\n"
+        << "command -v sbatch >/dev/null || { echo 'sbatch is not available' >&2; exit 1; }\n"
+        << "film_submission=$(sbatch --parsable \"$FILM_SCRIPT\")\n"
+        << "film_id=${film_submission%%;*}\n"
+        << "[[ $film_id =~ ^[0-9]+$ ]] || { printf 'Unexpected film job ID: %s\\n' \"$film_submission\" >&2; exit 1; }\n"
+        << "printf 'Film job submitted: %s\\n' \"$film_id\"\n"
+        << "if ! surface_submission=$(sbatch --parsable --dependency=\"afterok:$film_id\" \"$SURFACE_SCRIPT\"); then\n"
+        << "    printf 'Surface submission failed; film job %s is already queued.\\n' \"$film_id\" >&2\n"
+        << "    exit 1\n"
+        << "fi\n"
+        << "surface_id=${surface_submission%%;*}\n"
+        << "[[ $surface_id =~ ^[0-9]+$ ]] || { printf 'Unexpected surface job ID: %s\\n' \"$surface_submission\" >&2; exit 1; }\n"
+        << "printf 'Surface job submitted: %s (afterok:%s)\\n' \"$surface_id\" \"$film_id\"\n";
+    if (!out) throw std::runtime_error("Failed while writing dependent submit file: " + files.dependent_submit);
+}
 void write_info(const Settings& s, const System& sys, const Box& box,
                 const OutputFiles& files) {
     std::ofstream out(files.info);
@@ -1128,7 +1342,17 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"data\": \"" << json_escape(files.data_basename) << "\",\n"
         << "    \"lammps_input\": \"" << json_escape(files.input_basename) << "\",\n"
         << "    \"slurm_submit\": \"" << json_escape(files.submit_basename) << "\",\n"
-        << "    \"model_info\": \"" << json_escape(files.info_basename) << "\"\n"
+        << "    \"model_info\": \"" << json_escape(files.info_basename) << "\",\n"
+        << "    \"surface_input\": ";
+    if (files.surface_input_basename.empty()) out << "null";
+    else out << '"' << json_escape(files.surface_input_basename) << '"';
+    out << ",\n    \"surface_submit\": ";
+    if (files.surface_submit_basename.empty()) out << "null";
+    else out << '"' << json_escape(files.surface_submit_basename) << '"';
+    out << ",\n    \"dependent_submit\": ";
+    if (files.dependent_submit_basename.empty()) out << "null";
+    else out << '"' << json_escape(files.dependent_submit_basename) << '"';
+    out << "\n"
         << "  },\n"
         << "  \"generator_input\": {\n"
         << "    \"config_file\": ";
@@ -1166,7 +1390,14 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"chain_count\": " << s.m3 << ",\n"
         << "    \"dms_repeats_per_chain\": " << s.n3 - s.mps_per_chain << ",\n"
         << "    \"mps_repeats_per_chain\": " << s.mps_per_chain << ",\n"
+        << "    \"mps_distribution\": \"" << json_escape(s.mps_distribution) << "\",\n"
+        << "    \"chains_with_extra_mps\": " << s.chains_with_extra_mps << ",\n"
+        << "    \"total_mps_repeats\": " << s.total_mps_repeats << ",\n"
+        << "    \"realized_mps_mol_percent\": "
+        << (s.m3 == 0 ? 0.0 : 100.0 * s.total_mps_repeats / (1LL * s.m3 * s.n3)) << ",\n"
         << "    \"beads_per_chain\": " << s.n3 + s.mps_per_chain << ",\n"
+        << "    \"average_beads_per_chain\": "
+        << (s.m3 == 0 ? 0.0 : static_cast<double>(oil_beads(s)) / s.m3) << ",\n"
         << "    \"chain_mass_g_per_mol\": " << oil_chain_mass(s) << ",\n"
         << "    \"sequence\": \"" << json_escape(s.sequence) << "\",\n"
         << "    \"minimum_separation_angstrom\": " << s.oil_minimum_separation << ",\n"
@@ -1257,6 +1488,21 @@ void write_info(const Settings& s, const System& sys, const Box& box,
         << "    \"bond_creation_active_steps\": 4000000,\n"
         << "    \"bond_creation_probability\": "
         << kCrosslinkCreationProbability << ",\n"
+        << "    \"surface_measurement\": {\n"
+        << "      \"enabled\": " << (s.thickness > 0.0 ? "true" : "false") << ",\n"
+        << "      \"input_data\": ";
+    if (s.thickness > 0.0) out << '"' << "data." << json_escape(files.case_name) << ".npt_eq\"";
+    else out << "null";
+    out << ",\n"
+        << "      \"vacuum_padding_per_face_angstrom\": " << s.surface_padding << ",\n"
+        << "      \"z_guard_walls\": {\"style\": \"wall/lj126\", \"locations\": [\"zlo EDGE\", \"zhi EDGE\"], \"epsilon_kcal_per_mol\": " << cold.epsilon << ", \"sigma_angstrom\": " << cold.sigma << ", \"cutoff_angstrom\": " << cold.cutoff << "},\n"
+        << "      \"ensemble\": \"NVT\",\n"
+        << "      \"temperature_K\": 300.0,\n"
+        << "      \"relaxation_steps\": " << s.surface_relax_steps << ",\n"
+        << "      \"production_steps\": " << s.surface_production_steps << ",\n"
+        << "      \"sample_every_steps\": " << s.surface_sample_every << ",\n"
+        << "      \"observable\": \"apparent mechanical surface stress, not surface free energy\"\n"
+        << "    },\n"
         << "    \"msd_production\": {\n"
         << "      \"ensemble\": \"NVT\",\n"
         << "      \"temperature_K\": 300.0,\n"
@@ -1303,12 +1549,18 @@ int main(int argc, char** argv) {
         write_data(settings, system, box, files.data);
         write_lammps_input(settings, files);
         write_submit_script(files);
+        write_surface_input(settings, files);
+        write_surface_submit_script(files);
+        write_dependent_submit_script(files);
         write_info(settings, system, box, files);
         std::cerr << "Wrote model package:\n"
                   << "  " << files.data << "\n"
                   << "  " << files.input << "\n"
                   << "  " << files.submit << "\n"
                   << "  " << files.info << "\n"
+                  << (files.surface_input.empty() ? "" : "  " + files.surface_input + "\n")
+                  << (files.surface_submit.empty() ? "" : "  " + files.surface_submit + "\n")
+                  << (files.dependent_submit.empty() ? "" : "  " + files.dependent_submit + "\n")
                   << "System: " << system.atoms.size() << " atoms, "
                   << system.bonds.size() << " bonds, " << system.angles.size() << " angles, "
                   << system.dihedrals.size() << " dihedrals; box "

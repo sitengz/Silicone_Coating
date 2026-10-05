@@ -1,0 +1,12 @@
+# Generated LAMMPS data and potentially large runtime results stay local.
+**/data.*
+**/in.*
+**/submit.*.sh
+**/*.info
+**/dump.*
+**/restart.*
+**/out.*
+**/slurm-*.out
+**/slurm-*.err
+**/stress.*.dat
+__pycache__/

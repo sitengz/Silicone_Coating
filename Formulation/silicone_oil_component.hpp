@@ -109,6 +109,7 @@ struct Settings {
     int length = 0;
     int chains = 0;
     int mps_per_chain = 0;
+    int chains_with_extra_mps = 0; // First this many chains use mps_per_chain+1.
     std::string sequence = "random";
     std::uint32_t seed = 20260727u;
     double minimum_separation = 4.5;
@@ -639,6 +640,11 @@ inline Component generate(
         settings.mps_per_chain < 0 ||
         settings.mps_per_chain > settings.length)
         throw std::runtime_error("Invalid silicone-oil chain composition");
+    if (settings.chains_with_extra_mps < 0 ||
+        settings.chains_with_extra_mps >= settings.chains ||
+        (settings.chains_with_extra_mps > 0 &&
+         settings.mps_per_chain >= settings.length))
+        throw std::runtime_error("Invalid silicone-oil chain composition distribution");
     if (settings.z_lower_fraction < -0.5 ||
         settings.z_upper_fraction > 0.5 ||
         settings.z_lower_fraction >= settings.z_upper_fraction)
@@ -648,14 +654,18 @@ inline Component generate(
 
     Component component;
     component.atoms.reserve(static_cast<std::size_t>(settings.chains) *
-        static_cast<std::size_t>(settings.length + settings.mps_per_chain));
+        static_cast<std::size_t>(settings.length + settings.mps_per_chain) +
+        static_cast<std::size_t>(settings.chains_with_extra_mps));
     CellList cells(box, settings.minimum_separation);
     for (const Vec3& position : existing_positions) cells.insert(position);
     std::mt19937 random(settings.seed);
     std::uniform_real_distribution<double> unit(0.0, 1.0);
 
     for (int molecule = 0; molecule < settings.chains; ++molecule) {
-        const std::vector<bool> is_mps = make_sequence(settings, random);
+        Settings chain_settings = settings;
+        if (molecule < settings.chains_with_extra_mps)
+            ++chain_settings.mps_per_chain;
+        const std::vector<bool> is_mps = make_sequence(chain_settings, random);
         std::vector<Vec3> accepted_positions;
         bool accepted = false;
         for (int attempt = 0; attempt < 1000 && !accepted; ++attempt) {
